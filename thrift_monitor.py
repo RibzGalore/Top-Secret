@@ -37,6 +37,8 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 import anthropic
+import sendgrid
+from sendgrid.helpers.mail import Mail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -455,28 +457,26 @@ def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bo
 # ─── Email sending ─────────────────────────────────────────────────────────────
 
 def send_email(subject: str, html_body: str):
-    """Send the digest via SMTP."""
-    if not all([EMAIL_FROM, EMAIL_TO, SMTP_USER, SMTP_PASS]):
+    if not all([EMAIL_FROM, EMAIL_TO]):
         log.warning("Email not configured — printing to stdout instead")
         print(f"\n{'='*60}\nSUBJECT: {subject}\n{'='*60}")
-        print("[HTML email body — configure SMTP env vars to send]")
         return
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = EMAIL_FROM
-    msg["To"]      = EMAIL_TO
-    msg.attach(MIMEText(html_body, "html"))
-
+    sg_key = os.environ.get("SENDGRID_API_KEY", "")
+    if not sg_key:
+        log.error("SENDGRID_API_KEY not set")
+        return
+    message = Mail(
+        from_email=EMAIL_FROM,
+        to_emails=EMAIL_TO,
+        subject=subject,
+        html_content=html_body
+    )
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
-        log.info(f"Email sent to {EMAIL_TO}")
+        sg = sendgrid.SendGridAPIClient(api_key=sg_key)
+        response = sg.send(message)
+        log.info(f"Email sent via SendGrid — status {response.status_code}")
     except Exception as e:
-        log.error(f"Failed to send email: {e}")
+        log.error(f"SendGrid error: {e}")
         raise
 
 
