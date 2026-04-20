@@ -49,6 +49,8 @@ SMTP_HOST         = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT         = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER         = os.environ.get("SMTP_USER", "")
 SMTP_PASS         = os.environ.get("SMTP_PASS", "")
+sg_key_check      = os.environ.get("SENDGRID_API_KEY", "")
+print(f"DEBUG SendGrid key loaded: {bool(sg_key_check)}, length: {len(sg_key_check)}")
 
 TRACKER_URL       = "https://www.thezenofthriftconversions.com/thrift-conversions"
 SEC_EDGAR_SEARCH  = "https://efts.sec.gov/LATEST/search-index?q=%22{name}%22&dateRange=custom&startdt={start}&enddt={end}&forms=S-1,424B3,10-K"
