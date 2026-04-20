@@ -225,82 +225,54 @@ def fetch_recent_sec_thrift_filings() -> list[dict]:
 
 
 def fetch_prospectus_text(bank: dict) -> str:
-    """
-    Attempt to retrieve the prospectus/S-1 text for a bank.
-    Tries SEC EDGAR full-text search by company name.
-    Returns first 15,000 characters of the most relevant filing.
-    """
     name = bank.get("name", "")
-    accession = bank.get("accession", "")
-
-    # If we have a direct accession number from SEC, use it
-    if accession:
+    
+    # If a direct source URL to a filing is provided, fetch it directly
+    source = bank.get("source", "")
+    if source and "sec.gov/Archives" in source:
         try:
-            acc_fmt = accession.replace("-", "")
-            doc_url = f"https://www.sec.gov/Archives/edgar/data/{acc_fmt[:10]}/{accession}/{accession}-index.htm"
-            resp = requests.get(doc_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0"})
+            resp = requests.get(source, timeout=20, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
             if resp.ok:
+                log.info(f"Fetched filing directly for {name}: {len(resp.text)} chars")
                 return resp.text[:15000]
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Direct fetch failed for {name}: {e}")
 
-    # Fall back: search EDGAR for the company name
+    # Try SEC EDGAR full-text search by company name
     try:
         search_url = (
             f"https://efts.sec.gov/LATEST/search-index?q=%22{requests.utils.quote(name)}%22"
-            "&forms=S-1,424B3,10-K&dateRange=custom&startdt=2025-01-01"
+            f"&forms=S-1,424B3,10-K,10-Q&dateRange=custom&startdt=2024-01-01"
             f"&enddt={datetime.now().strftime('%Y-%m-%d')}"
         )
-        resp = requests.get(search_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0"})
+        resp = requests.get(search_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
         if resp.ok:
             hits = resp.json().get("hits", {}).get("hits", [])
             if hits:
-                # Get the file index for the most recent hit
                 src = hits[0].get("_source", {})
-                file_url = src.get("file_date", "")
                 accession_no = src.get("accession_no", "")
-                if accession_no:
-                    cik = src.get("entity_id", "")
-                    idx_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=S-1&dateb=&owner=include&count=5&search_text="
-                    idx_resp = requests.get(idx_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0"})
-                    if idx_resp.ok:
-                        return idx_resp.text[:15000]
+                cik = src.get("entity_id", "")
+                if accession_no and cik:
+                    # Build direct filing URL
+                    acc_clean = accession_no.replace("-", "")
+                    filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/{accession_no}-index.htm"
+                    filing_resp = requests.get(filing_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+                    if filing_resp.ok:
+                        # Parse index to find the main document
+                        soup = BeautifulSoup(filing_resp.text, "html.parser")
+                        for link in soup.find_all("a", href=True):
+                            href = link["href"]
+                            if any(ext in href.lower() for ext in [".htm", ".html"]) and "index" not in href.lower():
+                                doc_url = f"https://www.sec.gov{href}" if href.startswith("/") else href
+                                doc_resp = requests.get(doc_url, timeout=20, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+                                if doc_resp.ok and len(doc_resp.text) > 5000:
+                                    log.info(f"Fetched SEC filing for {name}: {len(doc_resp.text)} chars")
+                                    return doc_resp.text[:15000]
     except Exception as e:
-        log.warning(f"Could not fetch prospectus for {name}: {e}")
+        log.warning(f"SEC EDGAR search failed for {name}: {e}")
 
+    log.warning(f"Could not fetch prospectus for {name} — returning placeholder")
     return f"[Prospectus text unavailable for {name}. Analysis based on bank name and public information only.]"
-
-
-# ─── Claude analysis ───────────────────────────────────────────────────────────
-
-def run_checklist_analysis(bank: dict, filing_text: str) -> dict:
-    """Send the filing text to Claude and get back a structured checklist JSON."""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    prompt = CHECKLIST_PROMPT.format(
-        bank_name=bank.get("name", "Unknown Bank"),
-        source_url=bank.get("source", "SEC EDGAR"),
-        filing_text=filing_text[:12000]  # stay within reasonable context
-    )
-
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
-            system=CHECKLIST_SYSTEM,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        raw = response.content[0].text.strip()
-        # Strip any accidental markdown fences
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        log.error(f"JSON parse error for {bank.get('name')}: {e}")
-        return {"bank_name": bank.get("name"), "score": 0, "verdict": "Analysis failed — JSON parse error", "checklist": [], "error": str(e)}
-    except Exception as e:
-        log.error(f"Claude API error for {bank.get('name')}: {e}")
-        return {"bank_name": bank.get("name"), "score": 0, "verdict": f"Analysis failed: {e}", "checklist": [], "error": str(e)}
-
 
 # ─── Email formatting ──────────────────────────────────────────────────────────
 
@@ -508,12 +480,14 @@ def main():
             new_banks.append(bank)
             known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
 
-    # TEST MODE — force Hoyne Bank through the pipeline
+# TEST MODE — force Hoyne Bank through the pipeline
     new_banks.append({
         "name": "Hoyne Bancorp, Inc.",
         "ticker": "HYNE",
-        "source": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0002073153&type=S-1&dateb=&owner=include&count=10",
-        "raw": "Hoyne Bancorp, Inc. (S-1, 2025-06-17)"
+        "accession": "000110465925111398",
+        "cik": "2073153",
+        "source": "https://www.sec.gov/Archives/edgar/data/2073153/000110465925111398/hyne-20250930x10q.htm",
+        "raw": "Hoyne Bancorp, Inc. (10-Q, 2025-11-13)"
     })
 
     log.info(f"New banks detected: {len(new_banks)}")
