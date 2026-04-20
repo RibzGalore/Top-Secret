@@ -51,7 +51,7 @@ SMTP_USER         = os.environ.get("SMTP_USER", "")
 SMTP_PASS         = os.environ.get("SMTP_PASS", "")
 sg_key_check      = os.environ.get("SENDGRID_API_KEY", "")
 print(f"DEBUG SendGrid key loaded: {bool(sg_key_check)}, length: {len(sg_key_check)}")
-
+print(f"DEBUG EMAIL_FROM: '{EMAIL_FROM}', EMAIL_TO: '{EMAIL_TO}'")
 TRACKER_URL       = "https://www.thezenofthriftconversions.com/thrift-conversions"
 SEC_EDGAR_SEARCH  = "https://efts.sec.gov/LATEST/search-index?q=%22{name}%22&dateRange=custom&startdt={start}&enddt={end}&forms=S-1,424B3,10-K"
 STATE_FILE        = Path("thrift_state.json")  # persists known banks between runs
