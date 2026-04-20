@@ -500,17 +500,21 @@ def main():
     # 1. Fetch current list of thrift conversions
     current_banks = fetch_thrift_list()
 
-    # 2. Identify new additions (not seen in previous runs)
+   # 2. Identify new additions (not seen in previous runs)
     new_banks = []
     for bank in current_banks:
         bank_id = hashlib.md5(bank["name"].encode()).hexdigest()
         if bank_id not in known_banks:
             new_banks.append(bank)
-            known_banks[bank_id] = {
-                "name": bank["name"],
-                "first_seen": datetime.now().isoformat(),
-                "source": bank.get("source", ""),
-            }
+            known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
+
+    # TEST MODE — force Hoyne Bank through the pipeline
+    new_banks.append({
+        "name": "Hoyne Bancorp, Inc.",
+        "ticker": "HYNE",
+        "source": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0002073153&type=S-1&dateb=&owner=include&count=10",
+        "raw": "Hoyne Bancorp, Inc. (S-1, 2025-06-17)"
+    })
 
     log.info(f"New banks detected: {len(new_banks)}")
 
