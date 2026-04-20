@@ -31,6 +31,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
           EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
         run: python thrift_monitor.py
 
       - name: Save state
