@@ -274,6 +274,26 @@ def fetch_prospectus_text(bank: dict) -> str:
     log.warning(f"Could not fetch prospectus for {name} — returning placeholder")
     return f"[Prospectus text unavailable for {name}. Analysis based on bank name and public information only.]"
 
+def run_checklist_analysis(bank: dict, filing_text: str) -> dict:
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prompt = CHECKLIST_PROMPT.format(
+        bank_name=bank.get("name", "Unknown Bank"),
+        source_url=bank.get("source", "SEC EDGAR"),
+        filing_text=filing_text[:12000]
+    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            system=CHECKLIST_SYSTEM,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
+    except Exception as e:
+        log.error(f"Analysis error for {bank.get('name')}: {e}")
+        return {"bank_name": bank.get("name"), "score": 0, "verdict": f"Analysis failed: {e}", "checklist": [], "error": str(e)}
+
 # ─── Email formatting ──────────────────────────────────────────────────────────
 
 RESULT_COLORS = {
