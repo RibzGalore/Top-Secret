@@ -471,12 +471,17 @@ def send_email(subject: str, html_body: str):
         subject=subject,
         html_content=html_body
     )
-    try:
+try:
         sg = sendgrid.SendGridAPIClient(api_key=sg_key)
         response = sg.send(message)
         log.info(f"Email sent via SendGrid — status {response.status_code}")
+        log.info(f"SendGrid response body: {response.body}")
+        log.info(f"SendGrid response headers: {response.headers}")
     except Exception as e:
         log.error(f"SendGrid error: {e}")
+        log.error(f"SendGrid error type: {type(e)}")
+        if hasattr(e, 'body'):
+            log.error(f"SendGrid error body: {e.body}")
         raise
 
 
