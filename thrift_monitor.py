@@ -231,8 +231,19 @@ def fetch_prospectus_text(bank: dict) -> str:
         try:
             resp = requests.get(source, timeout=20, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
             if resp.ok:
-                log.info(f"Fetched filing directly for {name}: {len(resp.text)} chars")
-                return resp.text[:15000]
+                # Strip HTML tags to get clean text
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # Remove script and style elements
+                for tag in soup(["script", "style", "head"]):
+                    tag.decompose()
+                clean_text = soup.get_text(separator="\n")
+                # Collapse whitespace
+                import re
+                clean_text = re.sub(r'\n{3,}', '\n\n', clean_text)
+                clean_text = re.sub(r' {2,}', ' ', clean_text)
+                log.info(f"Fetched filing directly for {name}: {len(clean_text)} chars after HTML strip")
+                return clean_text[:50000]
         except Exception as e:
             log.warning(f"Direct fetch failed for {name}: {e}")
 
