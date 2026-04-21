@@ -17,7 +17,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 anthropic sendgrid
+        run: pip install requests beautifulsoup4 anthropic
 
       - name: Restore state
         uses: actions/cache@v4
