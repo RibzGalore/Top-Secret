@@ -274,10 +274,27 @@ def fetch_prospectus_text(bank: dict) -> str:
 
 def run_checklist_analysis(bank: dict, filing_text: str) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# Extract the most financially relevant section of the filing
+    # Look for key financial terms and grab surrounding context
+    text = filing_text
+    keywords = ["total assets", "net interest income", "deposits", "net income", 
+                "efficiency ratio", "tier 1", "non-performing", "allowance for credit"]
+    best_start = 0
+    best_score = 0
+    chunk_size = 12000
+    step = 2000
+    for i in range(0, min(len(text) - chunk_size, 100000), step):
+        chunk = text[i:i + chunk_size].lower()
+        score = sum(chunk.count(kw) for kw in keywords)
+        if score > best_score:
+            best_score = score
+            best_start = i
+    best_chunk = text[best_start:best_start + chunk_size]
+    
     prompt = CHECKLIST_PROMPT.format(
         bank_name=bank.get("name", "Unknown Bank"),
         source_url=bank.get("source", "SEC EDGAR"),
-        filing_text=filing_text[:12000]
+        filing_text=best_chunk
     )
     try:
         response = client.messages.create(
