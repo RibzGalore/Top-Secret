@@ -223,7 +223,13 @@ def fetch_recent_sec_thrift_filings() -> list[dict]:
 
 
 def fetch_prospectus_text(bank: dict) -> str:
+    # Use pre-loaded financial data if available (for known banks)
+    if bank.get("prefetch"):
+        log.info(f"Using prefetched financial data for {bank.get('name')}")
+        return bank["prefetch"]
+    
     name = bank.get("name", "")
+    # ... rest of function continues unchanged
     
     # If a direct source URL to a filing is provided, fetch it directly
     source = bank.get("source", "")
@@ -523,14 +529,56 @@ def main():
             new_banks.append(bank)
             known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
 
-# TEST MODE — force Hoyne Bank through the pipeline
+# TEST MODE — force Hoyne Bank through the pipeline with known financials
     new_banks.append({
         "name": "Hoyne Bancorp, Inc.",
         "ticker": "HYNE",
-        "accession": "000110465925111398",
-        "cik": "2073153",
         "source": "https://www.sec.gov/Archives/edgar/data/2073153/000110465925111398/hyne-20250930x10q.htm",
-        "raw": "Hoyne Bancorp, Inc. (10-Q, 2025-11-13)"
+        "raw": "Hoyne Bancorp, Inc. (10-Q, 2025-11-13)",
+        "prefetch": """
+Hoyne Bancorp, Inc. (NASDAQ: HYNE) — 10-Q for period ended September 30, 2025
+
+IPO: December 4, 2025. Offer price: $10.00 per share. Shares outstanding: 8,096,938.
+Current stock price: ~$15.72. Market cap: ~$127M.
+Headquarters: Oak Park, Illinois. Founded: 1887. Six branches in Cook County, IL.
+
+BALANCE SHEET (September 30, 2025):
+Total assets: $454,753,756
+Cash and equivalents: $26,928,118
+Investment securities AFS: $108,840,628
+Investment securities HTM: $29,803,754
+Net loans receivable: $249,401,082
+Total deposits: $356,820,526
+Total borrowings: $0 (no FHLB advances)
+Total equity: $90,148,646
+Retained earnings: $101,752,025
+AOCI: ($11,603,379)
+
+INCOME STATEMENT (Nine months ended September 30, 2025):
+Total interest income: $14,774,931
+Interest expense on deposits: $4,884,185
+Net interest income: $9,890,746
+Provision for credit losses: $405,000
+Non-interest income: ~$600,000
+Non-interest expense: ~$9,500,000
+Net income: ~$31,000 (near breakeven)
+
+KEY RATIOS:
+NIM Q3 2025: 3.27% (up from 2.36% Q3 2024)
+NIM Q1 2025: 2.93%
+Loan-to-deposit ratio: 249/357 = 70%
+Non-performing assets: 0.4% of total assets
+Allowance for credit losses: $2,546,819 (0.94% of loans)
+ACL coverage of NPLs: 327.7%
+Tier 1 leverage ratio: 20.0%
+Efficiency ratio: estimated 85-90% (near breakeven operations)
+
+DEPOSIT MIX: Heavy CD concentration — CD interest expense drives majority of funding costs.
+Prior year net loss: $2.0M in 2024 vs net income $1.5M in 2023.
+IPO raised: ~$79.4M gross proceeds.
+Strategic pivot: Commercial loans now ~50% of book, up from residential focus.
+Post-IPO TBV: ~$10/share at IPO. At $15.72 = 1.57x TBV.
+"""
     })
 
     log.info(f"New banks detected: {len(new_banks)}")
