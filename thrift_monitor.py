@@ -458,7 +458,7 @@ def send_email(subject: str, html_body: str):
     clean = re.sub(r'<[^>]+>', '', html_body)
     clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
     clean = '\n'.join(line.strip() for line in clean.splitlines() if line.strip())
-     message = f"{subject}\n\n{clean[:3500]}"
+    message = f"{subject}\n\n{clean[:3500]}"
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
       resp = requests.post(url, json={
