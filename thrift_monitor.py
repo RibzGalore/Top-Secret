@@ -465,7 +465,7 @@ def send_email(subject: str, html_body: str):
             "chat_id": chat_id,
             "text": message[:4096]
         }, timeout=15)
-        if resp.ok:
+      if resp.ok:
             log.info(f"Telegram notification sent — status {resp.status_code}")
         else:
             log.error(f"Telegram error: {resp.text}")
