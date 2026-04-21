@@ -451,33 +451,31 @@ def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bo
 # ─── Email sending ─────────────────────────────────────────────────────────────
 
 def send_email(subject: str, html_body: str):
-    if not all([EMAIL_FROM, EMAIL_TO]):
-        log.warning("Email not configured — printing to stdout instead")
-        print(f"\n{'='*60}\nSUBJECT: {subject}\n{'='*60}")
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        log.error("Telegram credentials not set")
         return
-    sg_key = os.environ.get("SENDGRID_API_KEY", "")
-    if not sg_key:
-        log.error("SENDGRID_API_KEY not set")
-        return
-    message = Mail(
-        from_email=EMAIL_FROM,
-        to_emails=EMAIL_TO,
-        subject=subject,
-        html_content=html_body
-    )
+    import re
+    clean = re.sub(r'<[^>]+>', '', html_body)
+    clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
+    clean = '\n'.join(line.strip() for line in clean.splitlines() if line.strip())
+    message = f"*{subject}*\n\n{clean[:3500]}"
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        sg = sendgrid.SendGridAPIClient(api_key=sg_key)
-        response = sg.send(message)
-        log.info(f"Email sent via SendGrid — status {response.status_code}")
-        log.info(f"SendGrid response body: {response.body}")
-        log.info(f"SendGrid response headers: {response.headers}")
+        resp = requests.post(url, json={
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }, timeout=15)
+        if resp.ok:
+            log.info(f"Telegram notification sent — status {resp.status_code}")
+        else:
+            log.error(f"Telegram error: {resp.text}")
     except Exception as e:
-        log.error(f"SendGrid error: {e}")
-        log.error(f"SendGrid error type: {type(e)}")
-        if hasattr(e, 'body'):
-            log.error(f"SendGrid error body: {e.body}")
+        log.error(f"Telegram error: {e}")
         raise
-
+      
 # ─── Main orchestration ────────────────────────────────────────────────────────
 
 def main():
