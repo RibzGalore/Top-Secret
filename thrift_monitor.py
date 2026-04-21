@@ -458,14 +458,14 @@ def send_email(subject: str, html_body: str):
     clean = re.sub(r'<[^>]+>', '', html_body)
     clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
     clean = '\n'.join(line.strip() for line in clean.splitlines() if line.strip())
-    message = f"{subject}\n\n{clean[:3500]}"
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    message = subject + "\n\n" + clean[:3500]
+    url = "https://api.telegram.org/bot" + bot_token + "/sendMessage"
     try:
-      resp = requests.post(url, json={
+        resp = requests.post(url, json={
             "chat_id": chat_id,
             "text": message[:4096]
         }, timeout=15)
-      if resp.ok:
+        if resp.ok:
             log.info(f"Telegram notification sent — status {resp.status_code}")
         else:
             log.error(f"Telegram error: {resp.text}")
