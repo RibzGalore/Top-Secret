@@ -37,8 +37,6 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 import anthropic
-import sendgrid
-from sendgrid.helpers.mail import Mail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
