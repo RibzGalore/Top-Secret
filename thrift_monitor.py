@@ -492,20 +492,37 @@ def send_email(subject: str, html_body: str):
     clean = re.sub(r'<[^>]+>', '', html_body)
     clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
     clean = '\n'.join(line.strip() for line in clean.splitlines() if line.strip())
-    message = subject + "\n\n" + clean[:3500]
+    full_message = subject + "\n\n" + clean
     url = "https://api.telegram.org/bot" + bot_token + "/sendMessage"
-    try:
-        resp = requests.post(url, json={
-            "chat_id": chat_id,
-            "text": message[:4096]
-        }, timeout=15)
-        if resp.ok:
-            log.info(f"Telegram notification sent — status {resp.status_code}")
-        else:
-            log.error(f"Telegram error: {resp.text}")
-    except Exception as e:
-        log.error(f"Telegram error: {e}")
-        raise
+
+    # Split into chunks of 4000 chars, breaking at newlines
+    chunks = []
+    remaining = full_message
+    while remaining:
+        if len(remaining) <= 4000:
+            chunks.append(remaining)
+            break
+        split_at = remaining[:4000].rfind('\n')
+        if split_at == -1:
+            split_at = 4000
+        chunks.append(remaining[:split_at])
+        remaining = remaining[split_at:].lstrip('\n')
+
+    log.info(f"Sending {len(chunks)} Telegram message(s)")
+    for i, chunk in enumerate(chunks):
+        try:
+            part_label = f"[{i+1}/{len(chunks)}]\n" if len(chunks) > 1 else ""
+            resp = requests.post(url, json={
+                "chat_id": chat_id,
+                "text": part_label + chunk
+            }, timeout=15)
+            if resp.ok:
+                log.info(f"Telegram message {i+1}/{len(chunks)} sent — status {resp.status_code}")
+            else:
+                log.error(f"Telegram error on chunk {i+1}: {resp.text}")
+        except Exception as e:
+            log.error(f"Telegram error on chunk {i+1}: {e}")
+            raise
       
 # ─── Main orchestration ────────────────────────────────────────────────────────
 
