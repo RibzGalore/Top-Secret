@@ -28,11 +28,13 @@ jobs:
 
       - name: Run monitor
         env:
-          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          EMAIL_FROM:           ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO:             ${{ secrets.EMAIL_TO }}
-          TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          EMAIL_FROM:          ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO:            ${{ secrets.EMAIL_TO }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN:            ${{ secrets.GH_TOKEN }}
+          GITHUB_REPOSITORY:   ${{ github.repository }}
         run: python thrift_monitor.py
 
       - name: Save state
