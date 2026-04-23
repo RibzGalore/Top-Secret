@@ -482,22 +482,42 @@ def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bo
 
 # ─── Email sending ─────────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str):
+def send_email(subject: str, html_body: str, analyses: list = None):
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not bot_token or not chat_id:
         log.error("Telegram credentials not set")
         return
+
+    # Build and publish HTML reports if we have analyses
+    report_links = []
+    if analyses:
+        for analysis in analyses:
+            bank_name = analysis.get("bank_name", "bank").lower()
+            safe_name = "".join(c if c.isalnum() else "-" for c in bank_name).strip("-")
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            filename = f"{safe_name}-{date_str}.html"
+            html_report = build_report_html(analysis)
+            url = publish_report_to_github(filename, html_report)
+            if url:
+                report_links.append((analysis.get("bank_name",""), url))
+
+    # Build short Telegram summary
     import re
     clean = re.sub(r'<[^>]+>', '', html_body)
     clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
     clean = '\n'.join(line.strip() for line in clean.splitlines() if line.strip())
-    full_message = subject + "\n\n" + clean
-    url = "https://api.telegram.org/bot" + bot_token + "/sendMessage"
 
-    # Split into chunks of 4000 chars, breaking at newlines
+    if report_links:
+        links_text = "\n\nFULL REPORTS:\n"
+        links_text += "\n".join(f"{name}: {url}" for name, url in report_links)
+        message = subject + "\n\n" + clean[:2000] + links_text
+    else:
+        message = subject + "\n\n" + clean[:3500]
+
+    url = "https://api.telegram.org/bot" + bot_token + "/sendMessage"
     chunks = []
-    remaining = full_message
+    remaining = message
     while remaining:
         if len(remaining) <= 4000:
             chunks.append(remaining)
@@ -508,7 +528,6 @@ def send_email(subject: str, html_body: str):
         chunks.append(remaining[:split_at])
         remaining = remaining[split_at:].lstrip('\n')
 
-    log.info(f"Sending {len(chunks)} Telegram message(s)")
     for i, chunk in enumerate(chunks):
         try:
             part_label = f"[{i+1}/{len(chunks)}]\n" if len(chunks) > 1 else ""
@@ -517,15 +536,181 @@ def send_email(subject: str, html_body: str):
                 "text": part_label + chunk
             }, timeout=15)
             if resp.ok:
-                log.info(f"Telegram message {i+1}/{len(chunks)} sent — status {resp.status_code}")
+                log.info(f"Telegram message {i+1}/{len(chunks)} sent")
             else:
-                log.error(f"Telegram error on chunk {i+1}: {resp.text}")
+                log.error(f"Telegram error: {resp.text}")
         except Exception as e:
-            log.error(f"Telegram error on chunk {i+1}: {e}")
+            log.error(f"Telegram error: {e}")
             raise
       
 # ─── Main orchestration ────────────────────────────────────────────────────────
 
+def publish_report_to_github(filename: str, html_content: str) -> str:
+    """Commit an HTML report file to the repo and return its GitHub Pages URL."""
+    gh_token = os.environ.get("GH_TOKEN", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not gh_token or not repo:
+        log.warning("GH_TOKEN or GITHUB_REPOSITORY not set — skipping publish")
+        return ""
+    import base64
+    api_url = f"https://api.github.com/repos/{repo}/contents/reports/{filename}"
+    headers = {
+        "Authorization": f"token {gh_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    # Check if file already exists (needed to get SHA for update)
+    sha = None
+    try:
+        check = requests.get(api_url, headers=headers, timeout=10)
+        if check.ok:
+            sha = check.json().get("sha")
+    except Exception:
+        pass
+    # Encode content
+    encoded = base64.b64encode(html_content.encode()).decode()
+    payload = {
+        "message": f"Add report: {filename}",
+        "content": encoded,
+        "branch": "main"
+    }
+    if sha:
+        payload["sha"] = sha
+    try:
+        resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if resp.ok:
+            pages_url = f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/reports/{filename}"
+            log.info(f"Report published: {pages_url}")
+            return pages_url
+        else:
+            log.error(f"GitHub publish error: {resp.text}")
+            return ""
+    except Exception as e:
+        log.error(f"GitHub publish error: {e}")
+        return ""
+
+
+def build_report_html(analysis: dict) -> str:
+    """Build a standalone HTML page for one bank analysis."""
+    score = analysis.get("score", 0)
+    rec = analysis.get("recommendation", "INSUFFICIENT_DATA")
+    rec_colors = {
+        "BUY_WATCH": "#1D9E75",
+        "WAIT_FOR_FILINGS": "#BA7517", 
+        "AVOID": "#E24B4A",
+        "INSUFFICIENT_DATA": "#888780"
+    }
+    rec_color = rec_colors.get(rec, "#888780")
+    result_colors = {"PASS": "#1D9E75", "FAIL": "#E24B4A", "CAUTION": "#BA7517", "INSUFFICIENT_DATA": "#888780"}
+    icons = {"PASS": "✓", "FAIL": "✗", "CAUTION": "⚠", "INSUFFICIENT_DATA": "?"}
+
+    rows = ""
+    for item in analysis.get("checklist", []):
+        result = item.get("result", "INSUFFICIENT_DATA")
+        color = result_colors.get(result, "#888780")
+        icon = icons.get(result, "?")
+        rows += f"""
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:{color}22;color:{color};text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">{icon}</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                {item.get('number','')}. {item.get('title','')}
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                {item.get('metric','—')}
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                {item.get('detail','')}
+            </td>
+        </tr>"""
+
+    green_flags = "".join(f"<div style='margin-bottom:6px;font-size:13px;'>✓ {f}</div>" for f in analysis.get("green_flags", []))
+    red_flags = "".join(f"<div style='margin-bottom:6px;font-size:13px;'>✗ {f}</div>" for f in analysis.get("red_flags", []))
+
+    return f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{analysis.get('bank_name','Bank')} — Thrift Monitor</title>
+<style>
+  body {{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#f5f5f0;margin:0;padding:20px;}}
+  .card {{background:#fff;border-radius:12px;border:1px solid #e8e8e8;
+    padding:24px;margin-bottom:20px;max-width:780px;margin-left:auto;margin-right:auto;}}
+  .header {{display:flex;justify-content:space-between;align-items:flex-start;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px;}}
+  .bank-name {{font-size:22px;font-weight:700;color:#1a1a1a;}}
+  .bank-meta {{font-size:13px;color:#666;margin-top:4px;}}
+  .score {{text-align:right;}}
+  .score-num {{font-size:36px;font-weight:700;color:#1a1a1a;}}
+  .rec-badge {{display:inline-block;padding:4px 14px;border-radius:6px;
+    font-size:12px;font-weight:700;background:{rec_color}22;color:{rec_color};margin-top:6px;}}
+  .verdict {{background:#f8f8f8;border-left:4px solid {rec_color};border-radius:0 8px 8px 0;
+    padding:14px 18px;margin-bottom:16px;font-size:14px;color:#333;line-height:1.7;}}
+  .analyst {{background:#f0f8f4;border-radius:8px;padding:14px 18px;
+    margin-bottom:16px;font-size:13px;color:#333;line-height:1.7;}}
+  table {{width:100%;border-collapse:collapse;}}
+  th {{background:#f5f5f5;padding:8px 10px;text-align:left;font-size:12px;
+    color:#666;font-weight:600;}}
+  .flags {{display:flex;gap:20px;margin-top:16px;flex-wrap:wrap;}}
+  .flag-box {{flex:1;min-width:200px;}}
+  .flag-title {{font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:0.05em;margin-bottom:8px;}}
+  .footer {{text-align:center;font-size:11px;color:#999;margin-top:20px;
+    max-width:780px;margin-left:auto;margin-right:auto;}}
+</style>
+</head>
+<body>
+<div style="max-width:780px;margin:0 auto;">
+  <div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;
+    letter-spacing:0.05em;margin-bottom:16px;">Community Bank Investing Agent</div>
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="bank-name">{analysis.get('bank_name','')}</div>
+        <div class="bank-meta">
+          {analysis.get('ticker') or 'Ticker pending'} &nbsp;·&nbsp;
+          IPO {analysis.get('ipo_date') or 'TBD'} &nbsp;·&nbsp;
+          Offer ${analysis.get('offer_price') or '—'}
+          {(' &nbsp;·&nbsp; $' + str(analysis.get('total_assets_m')) + 'M assets') if analysis.get('total_assets_m') else ''}
+        </div>
+      </div>
+      <div class="score">
+        <div class="score-num">{score}<span style="font-size:16px;color:#888;">/10</span></div>
+        <div class="rec-badge">{rec.replace('_',' ')}</div>
+      </div>
+    </div>
+    <div class="verdict"><strong>Verdict:</strong> {analysis.get('verdict','')}</div>
+    <div class="analyst">{analysis.get('analyst_take','')}</div>
+    <table>
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th>Criterion</th>
+        <th>Metric</th>
+        <th>Notes</th>
+      </tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+    <div class="flags">
+      <div class="flag-box">
+        <div class="flag-title" style="color:#1D9E75;">Green flags</div>
+        {green_flags or '<div style="font-size:13px;color:#999;">None identified</div>'}
+      </div>
+      <div class="flag-box">
+        <div class="flag-title" style="color:#E24B4A;">Red flags</div>
+        {red_flags or '<div style="font-size:13px;color:#999;">None identified</div>'}
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    Source: thezenofthriftconversions.com + SEC EDGAR · Analysis by Claude (Anthropic)<br>
+    Not investment advice. Always verify figures against original filings.
+  </div>
+</div>
+</body></html>"""
+  
 def main():
     log.info("=== Thrift Conversion Monitor starting ===")
 
@@ -617,7 +802,7 @@ Post-IPO TBV: ~$10/share at IPO. At $15.72 = 1.57x TBV.
         f"[Thrift Monitor] {len(new_banks)} new bank{'s' if len(new_banks) > 1 else ''} detected — {datetime.now().strftime('%b %d')}"
     )
     html = build_email_html(new_banks, analyses, no_new)
-    send_email(subject, html)
+    send_email(subject, html, analyses if not no_new else None)
 
     # 5. Save updated state
     state["banks"] = known_banks
