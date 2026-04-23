@@ -578,7 +578,7 @@ def publish_report_to_github(filename: str, html_content: str) -> str:
     try:
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.ok:
-            pages_url = f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/reports/{filename}"
+            pages_url = f"https://{repo.split('/')[0].lower()}.github.io/{repo.split('/')[1]}/reports/{filename}"
             log.info(f"Report published: {pages_url}")
             return pages_url
         else:
