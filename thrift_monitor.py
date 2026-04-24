@@ -48,8 +48,6 @@ SMTP_PORT         = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER         = os.environ.get("SMTP_USER", "")
 SMTP_PASS         = os.environ.get("SMTP_PASS", "")
 sg_key_check      = os.environ.get("SENDGRID_API_KEY", "")
-print(f"DEBUG SendGrid key loaded: {bool(sg_key_check)}, length: {len(sg_key_check)}")
-print(f"DEBUG EMAIL_FROM: '{EMAIL_FROM}', EMAIL_TO: '{EMAIL_TO}'")
 TRACKER_URL       = "https://www.thezenofthriftconversions.com/thrift-conversions"
 SEC_EDGAR_SEARCH  = "https://efts.sec.gov/LATEST/search-index?q=%22{name}%22&dateRange=custom&startdt={start}&enddt={end}&forms=S-1,424B3,10-K"
 STATE_FILE        = Path("thrift_state.json")  # persists known banks between runs
@@ -730,56 +728,6 @@ def main():
         if bank_id not in known_banks:
             new_banks.append(bank)
             known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
-
-# TEST MODE — force Marathon Bancorp through the pipeline with known financials
-    new_banks.append({
-        "name": "Marathon Bancorp, Inc.",
-        "ticker": "MBBC",
-        "source": "https://www.sec.gov/Archives/edgar/data/0001835385/000110465926013033/mara-20251231x10q.htm",
-        "raw": "Marathon Bancorp, Inc. (10-Q, Dec 31 2025)",
-        "prefetch": """Marathon Bancorp, Inc. (NASDAQ: MBBC) — 10-Q for period ended December 31, 2025
-
-IPO: April 22, 2025 (second step conversion). Offer price: $10.00 per share.
-Shares outstanding: 2,942,064. Headquarters: Wausau, Wisconsin. Founded: 1935.
-This is a second step conversion — previously traded as partial MHC structure since 2021.
-
-BALANCE SHEET (December 31, 2025):
-Total assets: $248,016,026
-Cash and short-term investments: $13,800,000
-Net loans: $211,900,000
-Total deposits: $178,387,453
-FHLB and other borrowings: ~$17,000,000
-Total equity: $46,900,000
-Tier 1 capital: $37,526,000
-
-INCOME STATEMENT (Six months ended December 31, 2025):
-Total interest income: ~$7,131,000
-Total interest expense: $1,753,231
-Net interest income: $5,377,900 (annualized ~$10.8M)
-Provision for credit losses: negative (recovery) -$188,833
-Non-interest expense: ~$5,200,000 (estimated from prior periods)
-Net income: ~$42,000 (near breakeven)
-
-KEY RATIOS:
-NIM: ~2.8% (below 3% target)
-Loan-to-deposit ratio: 119% ($211.9M loans / $178.4M deposits)
-Non-performing loans: 0.09% of total loans — exceptional
-Tier 1 leverage ratio: 15.27% — well capitalized
-Efficiency ratio: estimated 85-90% (near breakeven operations)
-Loans to assets: 85%
-
-CAPITAL: Bank net worth $37.45M + general credit loss reserve $1.70M = 15.79% of assets.
-Meets Wisconsin minimum net worth requirements comfortably.
-
-IPO DETAILS: Second step conversion raised ~$16.9M at $10/share (1,693,411 new shares).
-Exchange ratio applied to minority shares — total 2,942,064 shares outstanding post-conversion.
-Current price: ~$11.50 (approx 1.15x TBV at $10 offer, ~0.93x current TBV of ~$12.40/share post-raise).
-
-DEPOSIT MIX: Interest expense of $1.75M on $178M deposits = ~2.0% average cost — moderate.
-Prior year net loss: -$187,000 in FY2024. FY2025 (year ended June 30): net income $42,000.
-Loan growth: $219M to $248M total assets — 13% YoY growth.
-Geography: Wausau, Wisconsin community bank. Single market concentration risk."""
-    })
 
     log.info(f"New banks detected: {len(new_banks)}")
 
