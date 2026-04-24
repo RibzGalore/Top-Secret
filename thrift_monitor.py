@@ -731,56 +731,54 @@ def main():
             new_banks.append(bank)
             known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
 
-# TEST MODE — force Hoyne Bank through the pipeline with known financials
+# TEST MODE — force Marathon Bancorp through the pipeline with known financials
     new_banks.append({
-        "name": "Hoyne Bancorp, Inc.",
-        "ticker": "HYNE",
-        "source": "https://www.sec.gov/Archives/edgar/data/2073153/000110465925111398/hyne-20250930x10q.htm",
-        "raw": "Hoyne Bancorp, Inc. (10-Q, 2025-11-13)",
-        "prefetch": """
-Hoyne Bancorp, Inc. (NASDAQ: HYNE) — 10-Q for period ended September 30, 2025
+        "name": "Marathon Bancorp, Inc.",
+        "ticker": "MBBC",
+        "source": "https://www.sec.gov/Archives/edgar/data/0001835385/000110465926013033/mara-20251231x10q.htm",
+        "raw": "Marathon Bancorp, Inc. (10-Q, Dec 31 2025)",
+        "prefetch": """Marathon Bancorp, Inc. (NASDAQ: MBBC) — 10-Q for period ended December 31, 2025
 
-IPO: December 4, 2025. Offer price: $10.00 per share. Shares outstanding: 8,096,938.
-Current stock price: ~$15.72. Market cap: ~$127M.
-Headquarters: Oak Park, Illinois. Founded: 1887. Six branches in Cook County, IL.
+IPO: April 22, 2025 (second step conversion). Offer price: $10.00 per share.
+Shares outstanding: 2,942,064. Headquarters: Wausau, Wisconsin. Founded: 1935.
+This is a second step conversion — previously traded as partial MHC structure since 2021.
 
-BALANCE SHEET (September 30, 2025):
-Total assets: $454,753,756
-Cash and equivalents: $26,928,118
-Investment securities AFS: $108,840,628
-Investment securities HTM: $29,803,754
-Net loans receivable: $249,401,082
-Total deposits: $356,820,526
-Total borrowings: $0 (no FHLB advances)
-Total equity: $90,148,646
-Retained earnings: $101,752,025
-AOCI: ($11,603,379)
+BALANCE SHEET (December 31, 2025):
+Total assets: $248,016,026
+Cash and short-term investments: $13,800,000
+Net loans: $211,900,000
+Total deposits: $178,387,453
+FHLB and other borrowings: ~$17,000,000
+Total equity: $46,900,000
+Tier 1 capital: $37,526,000
 
-INCOME STATEMENT (Nine months ended September 30, 2025):
-Total interest income: $14,774,931
-Interest expense on deposits: $4,884,185
-Net interest income: $9,890,746
-Provision for credit losses: $405,000
-Non-interest income: ~$600,000
-Non-interest expense: ~$9,500,000
-Net income: ~$31,000 (near breakeven)
+INCOME STATEMENT (Six months ended December 31, 2025):
+Total interest income: ~$7,131,000
+Total interest expense: $1,753,231
+Net interest income: $5,377,900 (annualized ~$10.8M)
+Provision for credit losses: negative (recovery) -$188,833
+Non-interest expense: ~$5,200,000 (estimated from prior periods)
+Net income: ~$42,000 (near breakeven)
 
 KEY RATIOS:
-NIM Q3 2025: 3.27% (up from 2.36% Q3 2024)
-NIM Q1 2025: 2.93%
-Loan-to-deposit ratio: 249/357 = 70%
-Non-performing assets: 0.4% of total assets
-Allowance for credit losses: $2,546,819 (0.94% of loans)
-ACL coverage of NPLs: 327.7%
-Tier 1 leverage ratio: 20.0%
+NIM: ~2.8% (below 3% target)
+Loan-to-deposit ratio: 119% ($211.9M loans / $178.4M deposits)
+Non-performing loans: 0.09% of total loans — exceptional
+Tier 1 leverage ratio: 15.27% — well capitalized
 Efficiency ratio: estimated 85-90% (near breakeven operations)
+Loans to assets: 85%
 
-DEPOSIT MIX: Heavy CD concentration — CD interest expense drives majority of funding costs.
-Prior year net loss: $2.0M in 2024 vs net income $1.5M in 2023.
-IPO raised: ~$79.4M gross proceeds.
-Strategic pivot: Commercial loans now ~50% of book, up from residential focus.
-Post-IPO TBV: ~$10/share at IPO. At $15.72 = 1.57x TBV.
-"""
+CAPITAL: Bank net worth $37.45M + general credit loss reserve $1.70M = 15.79% of assets.
+Meets Wisconsin minimum net worth requirements comfortably.
+
+IPO DETAILS: Second step conversion raised ~$16.9M at $10/share (1,693,411 new shares).
+Exchange ratio applied to minority shares — total 2,942,064 shares outstanding post-conversion.
+Current price: ~$11.50 (approx 1.15x TBV at $10 offer, ~0.93x current TBV of ~$12.40/share post-raise).
+
+DEPOSIT MIX: Interest expense of $1.75M on $178M deposits = ~2.0% average cost — moderate.
+Prior year net loss: -$187,000 in FY2024. FY2025 (year ended June 30): net income $42,000.
+Loan growth: $219M to $248M total assets — 13% YoY growth.
+Geography: Wausau, Wisconsin community bank. Single market concentration risk."""
     })
 
     log.info(f"New banks detected: {len(new_banks)}")
