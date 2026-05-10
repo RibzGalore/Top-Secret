@@ -1057,31 +1057,54 @@ def main():
     # 1. Fetch current list of thrift conversions
     current_banks = fetch_thrift_list()
 
-   # 2. Identify new additions (not seen in previous runs)
+    # 2. Identify new additions (not seen in previous runs)
     new_banks = []
     for bank in current_banks:
         bank_id = hashlib.md5(bank["name"].encode()).hexdigest()
         if bank_id not in known_banks:
             new_banks.append(bank)
-            known_banks[bank_id] = {"name": bank["name"], "first_seen": datetime.now().isoformat(), "source": bank.get("source", "")}
+            known_banks[bank_id] = {
+                "name": bank["name"],
+                "first_seen": datetime.now().isoformat(),
+                "source": bank.get("source", ""),
+            }
 
     log.info(f"New banks detected: {len(new_banks)}")
 
     # 3. For each new bank, fetch prospectus and run checklist
-   analyses = []
+    analyses = []
     for bank in new_banks:
         log.info(f"Analyzing: {bank['name']}")
         filing_text = fetch_prospectus_text(bank)
         analysis = run_checklist_analysis(bank, filing_text)
         analyses.append(analysis)
         log.info(f"  Score: {analysis.get('score', '?')}/10 — {analysis.get('recommendation', '?')}")
-        # Add to watchlist if it has a ticker
-        if analysis.get("ticker") or bank.get("ticker"):
-            if not analysis.get("ticker") and bank.get("ticker"):
-                analysis["ticker"] = bank["ticker"]
+        # Add to watchlist if ticker available
+        if not analysis.get("ticker") and bank.get("ticker"):
+            analysis["ticker"] = bank["ticker"]
+        if analysis.get("ticker"):
             add_to_watchlist(analysis, bank)
-    
-    # 4. Build and send the weekly email
+
+    # 4. Build and publish HTML reports for new banks
+    for i, analysis in enumerate(analyses):
+        bank = new_banks[i] if i < len(new_banks) else {}
+        bank_name = analysis.get("bank_name", "bank").lower()
+        safe_name = "".join(c if c.isalnum() else "-" for c in bank_name).strip("-")
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        filename = f"{safe_name}-{date_str}.html"
+        html_report = build_report_html(analysis)
+        report_url = publish_report_to_github(filename, html_report)
+        if report_url:
+            analysis["report_url"] = report_url
+            # Update watchlist with report URL
+            ticker = analysis.get("ticker", "")
+            if ticker:
+                watchlist = load_watchlist()
+                if ticker in watchlist:
+                    watchlist[ticker]["report_url"] = report_url
+                    save_watchlist(watchlist)
+
+    # 5. Build and send notification
     no_new = len(new_banks) == 0
     subject = (
         f"[Thrift Monitor] No new additions this week — {datetime.now().strftime('%b %d')}"
@@ -1091,19 +1114,21 @@ def main():
     html = build_email_html(new_banks, analyses, no_new)
     send_email(subject, html, analyses if not no_new else None)
 
-    # 5. Save updated state
+    # 6. Update and publish live watchlist dashboard
+    watchlist = load_watchlist()
+    if watchlist:
+        log.info(f"Building watchlist dashboard for {len(watchlist)} banks...")
+        watchlist_html = build_watchlist_html(watchlist)
+        watchlist_url = publish_report_to_github("watchlist.html", watchlist_html)
+        if watchlist_url:
+            log.info(f"Watchlist published: {watchlist_url}")
+
+    # 7. Save updated state
     state["banks"] = known_banks
     state["last_run"] = datetime.now().isoformat()
     state["total_runs"] = state.get("total_runs", 0) + 1
     save_state(state)
 
-    # Update and publish live watchlist dashboard
-    watchlist = load_watchlist()
-    if watchlist:
-        watchlist_html = build_watchlist_html(watchlist)
-        watchlist_url = publish_report_to_github("watchlist.html", watchlist_html)
-        if watchlist_url:
-            log.info(f"Watchlist published: {watchlist_url}")
     log.info(f"=== Done. State saved. Total banks tracked: {len(known_banks)} ===")
 
 
