@@ -708,7 +708,343 @@ def build_report_html(analysis: dict) -> str:
   </div>
 </div>
 </body></html>"""
-  
+
+# ─── Watchlist & Price Tracking ───────────────────────────────────────────────
+
+def fetch_current_price(ticker: str) -> dict:
+    """Fetch current stock price and basic data from Yahoo Finance."""
+    if not ticker:
+        return {}
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.ok:
+            data = resp.json()
+            meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
+            return {
+                "price": round(meta.get("regularMarketPrice", 0), 2),
+                "prev_close": round(meta.get("chartPreviousClose", 0), 2),
+                "52w_high": round(meta.get("fiftyTwoWeekHigh", 0), 2),
+                "52w_low": round(meta.get("fiftyTwoWeekLow", 0), 2),
+                "market_cap": meta.get("marketCap", 0),
+                "fetched": datetime.now().isoformat()
+            }
+    except Exception as e:
+        log.warning(f"Price fetch failed for {ticker}: {e}")
+    return {}
+
+
+def fetch_insider_buying(ticker: str, cik: str = "") -> list:
+    """Check SEC EDGAR for recent Form 4 insider buying filings."""
+    buys = []
+    try:
+        search_url = (
+            f"https://efts.sec.gov/LATEST/search-index?q=%22{requests.utils.quote(ticker)}%22"
+            f"&forms=4&dateRange=custom&startdt={datetime.now().strftime('%Y-%m-%d')[:7]}-01"
+            f"&enddt={datetime.now().strftime('%Y-%m-%d')}"
+        )
+        resp = requests.get(search_url, timeout=10,
+                           headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+        if resp.ok:
+            hits = resp.json().get("hits", {}).get("hits", [])
+            for hit in hits[:10]:
+                src = hit.get("_source", {})
+                buys.append({
+                    "filer": src.get("display_names", ["Unknown"])[0] if src.get("display_names") else "Unknown",
+                    "date": src.get("file_date", ""),
+                    "form": src.get("form_type", "4")
+                })
+    except Exception as e:
+        log.warning(f"Insider buying fetch failed for {ticker}: {e}")
+    return buys[:5]
+
+
+def calculate_buy_signal(bank_data: dict, price_data: dict) -> dict:
+    """
+    Calculate buy signal based on 5 criteria.
+    Returns signal color (GREEN/YELLOW/RED) and score.
+    """
+    signals = []
+    score = 0
+
+    offer_price = bank_data.get("offer_price", 10)
+    tbv_per_share = bank_data.get("tbv_per_share", offer_price)
+    current_price = price_data.get("price", 0)
+    nim = bank_data.get("nim", 0)
+    nim_expanding = bank_data.get("nim_expanding", False)
+    npl_ratio = bank_data.get("npl_ratio", 999)
+    insider_buys = bank_data.get("recent_insider_buys", 0)
+    quarters_public = bank_data.get("quarters_public", 0)
+    ldr = bank_data.get("ldr", 999)
+
+    # 1. Price vs TBV
+    if current_price and tbv_per_share:
+        ptbv = current_price / tbv_per_share
+        if ptbv <= 1.0:
+            signals.append(("Price/TBV", f"{ptbv:.2f}x — deep value", "GREEN"))
+            score += 2
+        elif ptbv <= 1.3:
+            signals.append(("Price/TBV", f"{ptbv:.2f}x — attractive", "GREEN"))
+            score += 1
+        elif ptbv <= 1.5:
+            signals.append(("Price/TBV", f"{ptbv:.2f}x — fair value", "YELLOW"))
+        else:
+            signals.append(("Price/TBV", f"{ptbv:.2f}x — expensive", "RED"))
+            score -= 1
+    else:
+        signals.append(("Price/TBV", "Price data unavailable", "YELLOW"))
+
+    # 2. NIM above 3% and expanding
+    if nim >= 3.0 and nim_expanding:
+        signals.append(("NIM", f"{nim:.2f}% — above target and expanding", "GREEN"))
+        score += 2
+    elif nim >= 3.0:
+        signals.append(("NIM", f"{nim:.2f}% — above target, watch trend", "YELLOW"))
+        score += 1
+    elif nim >= 2.5:
+        signals.append(("NIM", f"{nim:.2f}% — below target", "YELLOW"))
+    else:
+        signals.append(("NIM", f"{nim:.2f}% — well below target", "RED"))
+        score -= 1
+
+    # 3. Asset quality
+    if npl_ratio < 0.5:
+        signals.append(("Asset Quality", f"NPLs {npl_ratio:.2f}% — excellent", "GREEN"))
+        score += 1
+    elif npl_ratio < 1.0:
+        signals.append(("Asset Quality", f"NPLs {npl_ratio:.2f}% — acceptable", "YELLOW"))
+    else:
+        signals.append(("Asset Quality", f"NPLs {npl_ratio:.2f}% — elevated", "RED"))
+        score -= 1
+
+    # 4. Insider buying
+    if insider_buys >= 3:
+        signals.append(("Insider Buying", f"{insider_buys} Form 4 filings — strong signal", "GREEN"))
+        score += 2
+    elif insider_buys >= 1:
+        signals.append(("Insider Buying", f"{insider_buys} Form 4 filing(s) — mild signal", "YELLOW"))
+        score += 1
+    else:
+        signals.append(("Insider Buying", "No recent insider buying detected", "YELLOW"))
+
+    # 5. Track record (quarters public)
+    if quarters_public >= 4:
+        signals.append(("Track Record", f"{quarters_public} quarters of data — sufficient", "GREEN"))
+        score += 1
+    elif quarters_public >= 2:
+        signals.append(("Track Record", f"{quarters_public} quarters — limited history", "YELLOW"))
+    else:
+        signals.append(("Track Record", f"{quarters_public} quarter(s) — too early", "RED"))
+        score -= 1
+
+    # Overall signal
+    if score >= 5:
+        overall = "GREEN"
+        label = "Consider buying"
+    elif score >= 2:
+        overall = "YELLOW"
+        label = "Watch closely"
+    else:
+        overall = "RED"
+        label = "Avoid / too early"
+
+    return {
+        "overall": overall,
+        "label": label,
+        "score": score,
+        "signals": signals,
+        "ptbv": round(current_price / tbv_per_share, 2) if current_price and tbv_per_share else None
+    }
+
+
+def load_watchlist() -> dict:
+    """Load watchlist from state file."""
+    state = load_state()
+    return state.get("watchlist", {})
+
+
+def save_watchlist(watchlist: dict):
+    """Save watchlist to state file."""
+    state = load_state()
+    state["watchlist"] = watchlist
+    save_state(state)
+
+
+def add_to_watchlist(analysis: dict, bank: dict):
+    """Add or update a bank in the watchlist after analysis."""
+    watchlist = load_watchlist()
+    ticker = analysis.get("ticker") or bank.get("ticker", "")
+    if not ticker:
+        return
+    offer_price = analysis.get("offer_price", 10) or 10
+    # Derive TBV from checklist item 7 metric if possible
+    tbv_per_share = offer_price  # default to offer price as TBV proxy
+    watchlist[ticker] = {
+        "name": analysis.get("bank_name", ""),
+        "ticker": ticker,
+        "offer_price": offer_price,
+        "tbv_per_share": tbv_per_share,
+        "checklist_score": analysis.get("score", 0),
+        "recommendation": analysis.get("recommendation", ""),
+        "nim": 0,
+        "nim_expanding": False,
+        "npl_ratio": 0,
+        "ldr": 0,
+        "recent_insider_buys": 0,
+        "quarters_public": 0,
+        "ipo_date": analysis.get("ipo_date", ""),
+        "added": datetime.now().isoformat(),
+        "last_updated": datetime.now().isoformat(),
+        "report_url": "",
+        "notes": analysis.get("verdict", "")
+    }
+    save_watchlist(watchlist)
+    log.info(f"Added {ticker} to watchlist")
+
+
+def build_watchlist_html(watchlist: dict) -> str:
+    """Build the live watchlist dashboard HTML page."""
+    run_date = datetime.now().strftime("%B %d, %Y")
+
+    signal_colors = {
+        "GREEN": {"bg": "#f0faf5", "border": "#1D9E75", "text": "#1D9E75", "dot": "#1D9E75"},
+        "YELLOW": {"bg": "#fffbf0", "border": "#BA7517", "text": "#BA7517", "dot": "#BA7517"},
+        "RED": {"bg": "#fff5f5", "border": "#E24B4A", "text": "#E24B4A", "dot": "#E24B4A"}
+    }
+
+    cards = ""
+    for ticker, bank in watchlist.items():
+        price_data = fetch_current_price(ticker)
+        insider_buys = fetch_insider_buying(ticker)
+        bank["recent_insider_buys"] = len(insider_buys)
+
+        # Estimate quarters public
+        if bank.get("ipo_date"):
+            try:
+                from datetime import date
+                ipo = datetime.fromisoformat(bank["ipo_date"])
+                quarters = max(0, int((datetime.now() - ipo).days / 90))
+                bank["quarters_public"] = quarters
+            except Exception:
+                bank["quarters_public"] = 0
+
+        signal = calculate_buy_signal(bank, price_data)
+        sc = signal_colors.get(signal["overall"], signal_colors["YELLOW"])
+
+        current_price = price_data.get("price", 0)
+        ptbv = signal.get("ptbv", "N/A")
+        price_display = f"${current_price:.2f}" if current_price else "N/A"
+        ptbv_display = f"{ptbv:.2f}x" if isinstance(ptbv, float) else "N/A"
+
+        signal_rows = ""
+        for sig_name, sig_detail, sig_color in signal.get("signals", []):
+            c = signal_colors.get(sig_color, signal_colors["YELLOW"])
+            signal_rows += f"""
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;
+                border-bottom:1px solid #f0f0f0;">
+                <div style="width:10px;height:10px;border-radius:50%;background:{c['dot']};
+                    flex-shrink:0;margin-top:3px;"></div>
+                <div>
+                    <div style="font-size:12px;font-weight:600;color:#1a1a1a;">{sig_name}</div>
+                    <div style="font-size:12px;color:#555;">{sig_detail}</div>
+                </div>
+            </div>"""
+
+        insider_html = ""
+        if insider_buys:
+            insider_html = "<div style='margin-top:10px;font-size:11px;color:#666;'>Recent Form 4s: "
+            insider_html += ", ".join(f"{b['filer']} ({b['date']})" for b in insider_buys[:3])
+            insider_html += "</div>"
+
+        report_link = f'<a href="{bank.get("report_url","")}" style="font-size:12px;color:#4A90D9;">View full report →</a>' if bank.get("report_url") else ""
+
+        cards += f"""
+        <div style="background:{sc['bg']};border:1.5px solid {sc['border']};border-radius:12px;
+            padding:20px 24px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                <div>
+                    <div style="font-size:18px;font-weight:700;color:#1a1a1a;">{bank.get('name','')}</div>
+                    <div style="font-size:13px;color:#666;margin-top:3px;">
+                        {ticker} &nbsp;·&nbsp; IPO {bank.get('ipo_date','TBD')} @ ${bank.get('offer_price',10):.2f}
+                        &nbsp;·&nbsp; Checklist score: {bank.get('checklist_score',0)}/10
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:28px;font-weight:700;color:{sc['text']};">
+                        {price_display}
+                    </div>
+                    <div style="font-size:12px;color:#666;margin-top:2px;">
+                        P/TBV: {ptbv_display} &nbsp;·&nbsp;
+                        52w: ${price_data.get('52w_low',0):.2f}–${price_data.get('52w_high',0):.2f}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:inline-block;padding:6px 16px;border-radius:20px;
+                background:{sc['border']};color:#fff;font-size:13px;font-weight:700;
+                margin-bottom:16px;">
+                {signal['label']} &nbsp;·&nbsp; Signal score: {signal['score']}/8
+            </div>
+
+            <div style="background:#fff;border-radius:8px;padding:14px 16px;margin-bottom:12px;">
+                {signal_rows}
+            </div>
+
+            <div style="font-size:12px;color:#555;line-height:1.6;font-style:italic;">
+                {bank.get('notes','')[:200]}{'...' if len(bank.get('notes','')) > 200 else ''}
+            </div>
+            {insider_html}
+            <div style="margin-top:12px;">{report_link}</div>
+        </div>"""
+
+    if not watchlist:
+        cards = """
+        <div style="text-align:center;padding:40px;color:#888;font-size:14px;">
+            No banks in watchlist yet. Banks will appear here after the monitor detects
+            new thrift conversions.
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thrift Monitor — Live Watchlist</title>
+<style>
+  body {{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#f5f5f0;margin:0;padding:20px;}}
+  .container {{max-width:780px;margin:0 auto;}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div style="margin-bottom:24px;">
+    <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;
+        letter-spacing:0.06em;margin-bottom:6px;">Community Bank Investing Agent</div>
+    <div style="font-size:24px;font-weight:700;color:#1a1a1a;">Live Watchlist</div>
+    <div style="font-size:13px;color:#888;margin-top:4px;">
+        Updated {run_date} &nbsp;·&nbsp; {len(watchlist)} bank{'s' if len(watchlist) != 1 else ''} tracked
+    </div>
+  </div>
+
+  <div style="background:#fff;border-radius:10px;padding:14px 18px;margin-bottom:24px;
+      border:1px solid #e8e8e8;font-size:13px;color:#555;line-height:1.7;">
+    <strong style="color:#1a1a1a;">Buy signal logic:</strong>
+    GREEN = Price ≤1.3x TBV + NIM ≥3% expanding + NPLs &lt;1% + insider buying + 4+ quarters data.
+    Each factor scored — 5+ points = consider buying, 2-4 = watch, below 2 = avoid.
+  </div>
+
+  {cards}
+
+  <div style="text-align:center;font-size:11px;color:#aaa;margin-top:24px;padding-top:16px;
+      border-top:1px solid #e8e8e8;">
+    Prices from Yahoo Finance · Insider data from SEC EDGAR Form 4 filings<br>
+    Not investment advice. Always verify before trading.
+  </div>
+</div>
+</body></html>"""
+
 def main():
     log.info("=== Thrift Conversion Monitor starting ===")
 
@@ -732,14 +1068,19 @@ def main():
     log.info(f"New banks detected: {len(new_banks)}")
 
     # 3. For each new bank, fetch prospectus and run checklist
-    analyses = []
+   analyses = []
     for bank in new_banks:
         log.info(f"Analyzing: {bank['name']}")
         filing_text = fetch_prospectus_text(bank)
         analysis = run_checklist_analysis(bank, filing_text)
         analyses.append(analysis)
         log.info(f"  Score: {analysis.get('score', '?')}/10 — {analysis.get('recommendation', '?')}")
-
+        # Add to watchlist if it has a ticker
+        if analysis.get("ticker") or bank.get("ticker"):
+            if not analysis.get("ticker") and bank.get("ticker"):
+                analysis["ticker"] = bank["ticker"]
+            add_to_watchlist(analysis, bank)
+    
     # 4. Build and send the weekly email
     no_new = len(new_banks) == 0
     subject = (
@@ -756,6 +1097,13 @@ def main():
     state["total_runs"] = state.get("total_runs", 0) + 1
     save_state(state)
 
+    # Update and publish live watchlist dashboard
+    watchlist = load_watchlist()
+    if watchlist:
+        watchlist_html = build_watchlist_html(watchlist)
+        watchlist_url = publish_report_to_github("watchlist.html", watchlist_html)
+        if watchlist_url:
+            log.info(f"Watchlist published: {watchlist_url}")
     log.info(f"=== Done. State saved. Total banks tracked: {len(known_banks)} ===")
 
 
