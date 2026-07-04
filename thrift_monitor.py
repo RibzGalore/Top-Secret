@@ -264,7 +264,7 @@ def fetch_recent_sec_thrift_filings() -> list[dict]:
             url = (
                 "https://efts.sec.gov/LATEST/search-index"
                 f"?q={requests.utils.quote(query)}"
-                "&forms=S-1,S-1/A,424B3,424B4"
+                "&forms=S-1,S-1/A,424B3,424B4,S-4,S-4/A,DEFM14A,425"
                 f"&dateRange=custom&startdt={start_date}&enddt={end_date}"
             )
             resp = requests.get(url, timeout=15, headers=EDGAR_HEADERS)
@@ -617,12 +617,22 @@ def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bo
 
 # ─── Email sending ─────────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str, analyses: list = None):
+def send_email(subject: str, html_body: str, analyses: list = None) -> bool:
+    """Returns True only if every Telegram message chunk was actually
+    delivered. A failed or missing-credential send used to just log and
+    return None here, which let the workflow finish 'green' even when
+    nothing reached Telegram — that's the bug behind 'no errors but no
+    message'. Callers should check this return value."""
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not bot_token or not chat_id:
-        log.error("Telegram credentials not set")
-        return
+        log.error(
+            "TELEGRAM SEND SKIPPED — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID "
+            "is empty/unset in this run's environment. Check the repo secret "
+            "names exactly match what the workflow .yml references, and that "
+            "they have values (a secret can exist with an empty value)."
+        )
+        return False
 
     # Build and publish HTML reports if we have analyses
     report_links = []
@@ -666,6 +676,7 @@ def send_email(subject: str, html_body: str, analyses: list = None):
         chunks.append(remaining[:split_at])
         remaining = remaining[split_at:].lstrip('\n')
 
+    all_ok = True
     for i, chunk in enumerate(chunks):
         try:
             part_label = f"[{i+1}/{len(chunks)}]\n" if len(chunks) > 1 else ""
@@ -676,10 +687,20 @@ def send_email(subject: str, html_body: str, analyses: list = None):
             if resp.ok:
                 log.info(f"Telegram message {i+1}/{len(chunks)} sent")
             else:
-                log.error(f"Telegram error: {resp.text}")
+                all_ok = False
+                log.error(
+                    f"TELEGRAM DELIVERY FAILED (chunk {i+1}/{len(chunks)}): "
+                    f"HTTP {resp.status_code} — {resp.text}. Common causes: "
+                    f"(1) the bot account has never received a /start message "
+                    f"from you — Telegram bots cannot push to a chat_id that "
+                    f"hasn't messaged them first, (2) wrong chat_id (must be "
+                    f"the numeric id from a getUpdates call, not a username), "
+                    f"(3) bot token revoked or wrong secret name."
+                )
         except Exception as e:
+            all_ok = False
             log.error(f"Telegram error: {e}")
-            raise
+    return all_ok
       
 # ─── Main orchestration ────────────────────────────────────────────────────────
 
@@ -1201,20 +1222,36 @@ def main():
     # empty/broken" — these look identical downstream unless we flag it here.
     scan_looks_broken = len(current_banks) == 0
 
-    # 2. Identify new additions (not seen in previous runs), using the
-    # normalized name key so punctuation/casing drift doesn't create
-    # false "new" entries or, worse, prevent real new entries from
-    # ever registering against a stale hash scheme.
+    # 2. Identify banks that need processing this run: anything genuinely
+    # new, PLUS anything previously "seen" that never actually got a
+    # published report (e.g. it was picked up during an earlier broken
+    # run, marked known, and then the pipeline failed before publishing —
+    # that used to mean it was silently skipped forever after).
     new_banks = []
     for bank in current_banks:
         bank_id = bank_key(bank["name"])
-        if bank_id not in known_banks:
+        existing = known_banks.get(bank_id)
+        if existing is None:
             new_banks.append(bank)
             known_banks[bank_id] = {
                 "name": bank["name"],
                 "first_seen": datetime.now().isoformat(),
                 "source": bank.get("source", ""),
+                "reported": False,
             }
+        elif not existing.get("reported", False):
+            log.info(f"'{bank['name']}' was seen before but never got a "
+                     f"published report — reprocessing.")
+            new_banks.append(bank)
+
+    # On-demand override: allows running one bank's analysis outside the
+    # normal weekly diff, e.g. for ad-hoc/watchlist requests. Set the
+    # FORCE_BANK env var (or pass --bank NAME on the CLI) to a bank name;
+    # it'll be analyzed and reported even if already known/reported.
+    force_bank = os.environ.get("FORCE_BANK", "").strip()
+    if force_bank:
+        log.info(f"FORCE_BANK set — forcing analysis of: {force_bank}")
+        new_banks.append({"name": force_bank, "source": "manual-request"})
 
     log.info(f"New banks detected: {len(new_banks)}")
     if scan_looks_broken:
@@ -1250,6 +1287,12 @@ def main():
         report_url = publish_report_to_github(filename, html_report)
         if report_url:
             analysis["report_url"] = report_url
+            # Mark this bank as actually reported, so future runs stop
+            # reprocessing it — this is the flag that was missing before.
+            bid = bank_key(bank.get("name", analysis.get("bank_name", "")))
+            if bid in known_banks:
+                known_banks[bid]["reported"] = True
+                known_banks[bid]["report_url"] = report_url
             # Update watchlist with report URL
             ticker = analysis.get("ticker", "")
             if ticker:
@@ -1257,6 +1300,9 @@ def main():
                 if ticker in watchlist:
                     watchlist[ticker]["report_url"] = report_url
                     save_watchlist(watchlist)
+        else:
+            log.warning(f"Report publish failed for {bank.get('name')} — "
+                        f"will retry next run (not marked as reported).")
 
     # 5. Build and send notification
     no_new = len(new_banks) == 0
@@ -1267,7 +1313,7 @@ def main():
     else:
         subject = f"[Thrift Monitor] {len(new_banks)} new bank{'s' if len(new_banks) > 1 else ''} detected — {datetime.now().strftime('%b %d')}"
     html = build_email_html(new_banks, analyses, no_new, scan_looks_broken)
-    send_email(subject, html, analyses if not no_new else None)
+    telegram_ok = send_email(subject, html, analyses if not no_new else None)
 
     # 6. Update and publish live watchlist dashboard
     watchlist = load_watchlist()
@@ -1285,6 +1331,19 @@ def main():
     save_state(state)
 
     log.info(f"=== Done. State saved. Total banks tracked: {len(known_banks)} ===")
+
+    if not telegram_ok:
+        # Everything else (reports, watchlist, state) already succeeded and
+        # is saved above — only the notification itself failed. We still
+        # exit non-zero so the Actions run shows red and you actually see
+        # it, instead of a misleading green checkmark on a run that never
+        # reached your phone.
+        log.error(
+            "Exiting non-zero: Telegram delivery failed this run. All "
+            "analysis/report work above completed and was saved — only "
+            "the notification itself didn't go through."
+        )
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
