@@ -181,7 +181,16 @@ def fetch_thrift_list() -> list[dict]:
         text_blocks = soup.get_text(separator="\n")
         lines = [l.strip() for l in text_blocks.splitlines() if l.strip()]
         for line in lines:
-            if any(k in line for k in ["Savings Bank", "Bancorp", "Federal Savings", "MHC", "Thrift"]):
+            # Must be short and shaped like an actual entity name — not a
+            # paragraph of page copy. This filter previously matched on
+            # "Thrift" alone, which grabbed the page's own SEO description
+            # text as a fake "bank" (confirmed in production: a 250+ char
+            # sentence became a bank_name and broke the file-write step).
+            if len(line) > 70 or len(line.split()) > 8:
+                continue
+            if any(line.endswith(suffix) for suffix in
+                   ["Bancorp", "Bancorp, Inc.", "Financial", "Financial, Inc.",
+                    "Savings Bank", "Federal Savings", "Bank", "MHC", "Corp."]):
                 banks.append({"name": line, "source": TRACKER_URL, "raw": line})
         if not banks:
             log.warning(
@@ -621,6 +630,9 @@ def send_email(subject: str, html_body: str, analyses: list = None):
         for analysis in analyses:
             bank_name = analysis.get("bank_name", "bank").lower()
             safe_name = "".join(c if c.isalnum() else "-" for c in bank_name).strip("-")
+            safe_name = safe_name[:60].strip("-") or "bank"  # hard cap — a bad
+            # upstream value (e.g. scraped page copy instead of a real bank
+            # name) must never be able to produce a filesystem-breaking path
             date_str = datetime.now().strftime("%Y-%m-%d")
             filename = f"{safe_name}-{date_str}.html"
             html_report = build_report_html(analysis)
@@ -1231,6 +1243,7 @@ def main():
         bank = new_banks[i] if i < len(new_banks) else {}
         bank_name = analysis.get("bank_name", "bank").lower()
         safe_name = "".join(c if c.isalnum() else "-" for c in bank_name).strip("-")
+        safe_name = safe_name[:60].strip("-") or "bank"
         date_str = datetime.now().strftime("%Y-%m-%d")
         filename = f"{safe_name}-{date_str}.html"
         html_report = build_report_html(analysis)
