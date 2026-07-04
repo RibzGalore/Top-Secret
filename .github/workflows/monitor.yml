@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 8 * * 1'
   workflow_dispatch:
+    inputs:
+      bank_name:
+        description: 'Force-analyze a specific bank (leave blank for normal weekly scan)'
+        required: false
+        default: ''
+  workflow_dispatch:
 
 jobs:
   monitor:
@@ -32,6 +38,7 @@ jobs:
           EMAIL_FROM:          ${{ secrets.EMAIL_FROM }}
           EMAIL_TO:            ${{ secrets.EMAIL_TO }}
           TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FORCE_BANK: ${{ github.event.inputs.bank_name }}
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_TOKEN:            ${{ secrets.GH_TOKEN }}
           GITHUB_REPOSITORY:   ${{ github.repository }}
