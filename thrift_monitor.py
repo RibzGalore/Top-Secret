@@ -29,7 +29,7 @@ import json
 import smtplib
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -129,14 +129,40 @@ def save_state(state: dict):
 
 # ─── Web scraping ─────────────────────────────────────────────────────────────
 
+def normalize_bank_name(name: str) -> str:
+    """
+    Normalize a bank name for dedup/matching so 'PSB Financial, Inc.' and
+    'PSB Financial Inc' hash identically, and so a name seen with slightly
+    different punctuation/casing across runs isn't treated as brand-new.
+    """
+    import re
+    n = name.lower().strip()
+    n = re.sub(r"[.,]", "", n)
+    n = re.sub(r"\b(inc|corp|corporation|company|co)\b", "", n)
+    n = re.sub(r"\s+", " ", n).strip()
+    return n
+
+
+def bank_key(name: str) -> str:
+    return hashlib.md5(normalize_bank_name(name).encode()).hexdigest()
+
+
 def fetch_thrift_list() -> list[dict]:
     """
-    Scrape thezenofthriftconversions.com for the current bank list.
-    
-    The site is Wix-rendered so the table doesn't appear in raw HTML.
-    We use a realistic browser User-Agent and look for any visible text
-    blocks, plus fall back to a secondary SEC EDGAR search for recent
-    thrift S-1 filings as a cross-check.
+    Build the current list of thrift IPO/conversion candidates.
+
+    IMPORTANT: thezenofthriftconversions.com is a Wix site whose table is
+    rendered client-side (confirmed by inspecting the raw HTML directly —
+    the table text is not present in the server response). A plain
+    requests.get() scrape of that page will reliably return zero real
+    rows. We still try it (Wix occasionally serves a static snapshot to
+    crawlers) but treat it only as a bonus signal, and log loudly if it
+    comes back empty so that's visible in the run log rather than silently
+    masking a detection gap.
+
+    The real detection path is SEC EDGAR full-text search, using several
+    broader query variants (see fetch_recent_sec_thrift_filings) merged
+    together, since real filings don't reliably contain one fixed phrase.
     """
     headers = {
         "User-Agent": (
@@ -148,76 +174,132 @@ def fetch_thrift_list() -> list[dict]:
 
     banks = []
 
-    # Primary: try to get the Wix page content
     try:
         resp = requests.get(TRACKER_URL, headers=headers, timeout=15)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Wix renders tables as divs; look for ticker-like text patterns
         text_blocks = soup.get_text(separator="\n")
         lines = [l.strip() for l in text_blocks.splitlines() if l.strip()]
-
-        # Look for lines that look like bank entries (contains $, IPO, or known keywords)
-        for i, line in enumerate(lines):
+        for line in lines:
             if any(k in line for k in ["Savings Bank", "Bancorp", "Federal Savings", "MHC", "Thrift"]):
                 banks.append({"name": line, "source": TRACKER_URL, "raw": line})
-
+        if not banks:
+            log.warning(
+                "Wix tracker page returned 0 matching rows — expected, "
+                "since the table is client-rendered. Relying on SEC EDGAR."
+            )
     except Exception as e:
         log.warning(f"Could not fetch tracker page: {e}")
 
-    # Secondary: query SEC EDGAR full-text search for recent thrift S-1 filings
-    # This is the most reliable signal for new conversions
     sec_banks = fetch_recent_sec_thrift_filings()
-    
-    # Merge, deduplicating by a hash of the bank name
-    seen = {hashlib.md5(b["name"].encode()).hexdigest() for b in banks}
-    for b in sec_banks:
-        h = hashlib.md5(b["name"].encode()).hexdigest()
-        if h not in seen:
-            banks.append(b)
-            seen.add(h)
+    if not sec_banks:
+        log.warning(
+            "SEC EDGAR search returned ZERO candidates this run. If the "
+            "tracker site shows entries, this indicates a search/query "
+            "problem, not genuinely 'no new additions'. Check the raw "
+            "hit counts logged above this line."
+        )
 
-    log.info(f"Found {len(banks)} banks in total scan")
+    seen = {bank_key(b["name"]) for b in banks}
+    for b in sec_banks:
+        k = bank_key(b["name"])
+        if k not in seen:
+            banks.append(b)
+            seen.add(k)
+
+    log.info(f"Found {len(banks)} candidate banks in total scan")
     return banks
+
+
+EDGAR_HEADERS = {"User-Agent": "ThriftConversionMonitor/1.1 (contact: set-your-real-email@example.com)"}
+
+# Multiple phrasing variants, run as separate queries and merged. A single
+# AND'd exact-phrase query ("mutual to stock" + "savings bank") misses any
+# filing that phrases the conversion differently — which is common.
+SEC_QUERY_VARIANTS = [
+    '"plan of conversion"',
+    '"mutual holding company" "conversion"',
+    '"mutual-to-stock conversion"',
+    '"second-step conversion"',
+    '"initial public offering" "savings bank"',
+]
+
+
+def _parse_id(hit_id: str) -> tuple[str, str]:
+    """
+    EDGAR full-text-search hit _id looks like:
+      '0001234567-24-001234:filing-main.htm'
+    Returns (accession_no_with_dashes, filename). There is no separate
+    'accession_no' field in _source — it only lives inside _id.
+    """
+    if ":" in hit_id:
+        acc, fname = hit_id.split(":", 1)
+        return acc, fname
+    return hit_id, ""
 
 
 def fetch_recent_sec_thrift_filings() -> list[dict]:
     """
-    Query SEC EDGAR for recent mutual-to-stock conversion S-1 and 424B3 filings.
-    These are the definitive source of new thrift IPOs.
+    Query SEC EDGAR full-text search for recent thrift conversion filings,
+    using several broader phrasing variants (real filings don't all use
+    the same exact wording) and a rolling date window rather than a
+    hardcoded year.
     """
     banks = []
-    try:
-        # Search for thrift conversion filings in the last 90 days
-        url = (
-            "https://efts.sec.gov/LATEST/search-index?q=%22mutual+to+stock%22"
-            "+%22savings+bank%22&forms=S-1,424B3&dateRange=custom"
-            f"&startdt=2026-01-01&enddt={datetime.now().strftime('%Y-%m-%d')}"
-        )
-        resp = requests.get(url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
-        if resp.ok:
+    total_hits_seen = 0
+    start_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
+    end_date = datetime.now().strftime("%Y-%m-%d")
+
+    for query in SEC_QUERY_VARIANTS:
+        try:
+            url = (
+                "https://efts.sec.gov/LATEST/search-index"
+                f"?q={requests.utils.quote(query)}"
+                "&forms=S-1,S-1/A,424B3,424B4"
+                f"&dateRange=custom&startdt={start_date}&enddt={end_date}"
+            )
+            resp = requests.get(url, timeout=15, headers=EDGAR_HEADERS)
+            if not resp.ok:
+                log.warning(f"EDGAR query failed ({resp.status_code}) for: {query}")
+                continue
             data = resp.json()
             hits = data.get("hits", {}).get("hits", [])
-            for hit in hits[:20]:  # cap at 20
+            total = data.get("hits", {}).get("total", {}).get("value", len(hits))
+            total_hits_seen += total
+            log.info(f"EDGAR query {query!r}: {total} total hits, {len(hits)} returned")
+
+            for hit in hits:
                 src = hit.get("_source", {})
-                entity = src.get("entity_name", "")
-                form = src.get("form_type", "")
+                entity = src.get("entity_name", "") or src.get("display_names", [""])[0]
+                form = src.get("form_type", "") or src.get("form", "")
                 filed = src.get("file_date", "")
-                accession = src.get("accession_no", "")
+                accession, filename = _parse_id(hit.get("_id", ""))
                 if entity:
                     banks.append({
                         "name": entity,
                         "form": form,
                         "filed": filed,
                         "accession": accession,
-                        "source": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={requests.utils.quote(entity)}&type=S-1&dateb=&owner=include&count=10",
+                        "filename": filename,
+                        "source": (
+                            f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+                            f"&company={requests.utils.quote(entity)}&type=S-1&dateb=&owner=include&count=10"
+                        ),
                         "raw": f"{entity} ({form}, {filed})"
                     })
-    except Exception as e:
-        log.warning(f"SEC EDGAR search failed: {e}")
+        except Exception as e:
+            log.warning(f"SEC EDGAR search failed for query {query!r}: {e}")
 
-    return banks
+    log.info(f"EDGAR total hits across all query variants: {total_hits_seen}, {len(banks)} bank entries parsed")
+
+    # Dedup within this function too, since multiple query variants overlap
+    deduped, seen = [], set()
+    for b in banks:
+        k = bank_key(b["name"])
+        if k not in seen:
+            deduped.append(b)
+            seen.add(k)
+    return deduped
 
 
 def fetch_prospectus_text(bank: dict) -> str:
@@ -251,41 +333,75 @@ def fetch_prospectus_text(bank: dict) -> str:
         except Exception as e:
             log.warning(f"Direct fetch failed for {name}: {e}")
 
-    # Try SEC EDGAR full-text search by company name
+    # Try SEC EDGAR full-text search by company name.
+    # NOTE: EDGAR's _source has no 'accession_no' or 'entity_id' fields —
+    # the accession number lives inside the hit's _id (format
+    # 'accession-with-dashes:filename.htm'), and CIK is resolved separately
+    # via the company search endpoint. The previous version read fields
+    # that don't exist, so this path always silently fell through.
     try:
         search_url = (
             f"https://efts.sec.gov/LATEST/search-index?q=%22{requests.utils.quote(name)}%22"
-            f"&forms=S-1,424B3,10-K,10-Q&dateRange=custom&startdt=2024-01-01"
+            f"&forms=S-1,S-1/A,424B3,424B4,10-K,10-Q&dateRange=custom&startdt=2023-01-01"
             f"&enddt={datetime.now().strftime('%Y-%m-%d')}"
         )
-        resp = requests.get(search_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+        resp = requests.get(search_url, timeout=15, headers=EDGAR_HEADERS)
         if resp.ok:
             hits = resp.json().get("hits", {}).get("hits", [])
             if hits:
-                src = hits[0].get("_source", {})
-                accession_no = src.get("accession_no", "")
-                cik = src.get("entity_id", "")
-                if accession_no and cik:
-                    # Build direct filing URL
-                    acc_clean = accession_no.replace("-", "")
-                    filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_clean}/{accession_no}-index.htm"
-                    filing_resp = requests.get(filing_url, timeout=15, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+                hit = hits[0]
+                accession, filename = _parse_id(hit.get("_id", ""))
+                # cik(s) for the filer — EDGAR full text search returns this
+                # as a list under _source['cik'] in most cases
+                ciks = hit.get("_source", {}).get("cik", [])
+                cik = ciks[0] if isinstance(ciks, list) and ciks else (ciks or "")
+
+                if not cik:
+                    # Fallback: resolve CIK by company name via EDGAR company search
+                    cik = _lookup_cik_by_name(name)
+
+                if accession and cik:
+                    acc_clean = accession.replace("-", "")
+                    cik_int = str(int(cik))  # strip leading zeros for the Archives path
+                    filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{accession}-index.htm"
+                    filing_resp = requests.get(filing_url, timeout=15, headers=EDGAR_HEADERS)
                     if filing_resp.ok:
-                        # Parse index to find the main document
                         soup = BeautifulSoup(filing_resp.text, "html.parser")
                         for link in soup.find_all("a", href=True):
                             href = link["href"]
                             if any(ext in href.lower() for ext in [".htm", ".html"]) and "index" not in href.lower():
                                 doc_url = f"https://www.sec.gov{href}" if href.startswith("/") else href
-                                doc_resp = requests.get(doc_url, timeout=20, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+                                doc_resp = requests.get(doc_url, timeout=20, headers=EDGAR_HEADERS)
                                 if doc_resp.ok and len(doc_resp.text) > 5000:
                                     log.info(f"Fetched SEC filing for {name}: {len(doc_resp.text)} chars")
                                     return doc_resp.text[:15000]
+                    else:
+                        log.warning(f"Filing index fetch failed for {name}: HTTP {filing_resp.status_code}")
+                else:
+                    log.warning(f"Could not resolve accession/CIK for {name} (accession={accession!r}, cik={cik!r})")
     except Exception as e:
         log.warning(f"SEC EDGAR search failed for {name}: {e}")
 
     log.warning(f"Could not fetch prospectus for {name} — returning placeholder")
     return f"[Prospectus text unavailable for {name}. Analysis based on bank name and public information only.]"
+
+
+def _lookup_cik_by_name(name: str) -> str:
+    """Resolve a company's CIK via EDGAR's company search (not full-text search)."""
+    try:
+        url = (
+            "https://www.sec.gov/cgi-bin/browse-edgar"
+            f"?action=getcompany&company={requests.utils.quote(name)}&type=S-1&output=atom"
+        )
+        resp = requests.get(url, timeout=15, headers=EDGAR_HEADERS)
+        if resp.ok:
+            import re
+            m = re.search(r"CIK=(\d+)", resp.text)
+            if m:
+                return m.group(1)
+    except Exception as e:
+        log.warning(f"CIK lookup failed for {name}: {e}")
+    return ""
 
 def run_checklist_analysis(bank: dict, filing_text: str) -> dict:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -432,10 +548,22 @@ def build_checklist_html(analysis: dict) -> str:
     </div>"""
 
 
-def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bool) -> str:
+def build_email_html(new_banks: list[dict], all_analyses: list[dict], no_new: bool, scan_looks_broken: bool = False) -> str:
     run_date = datetime.now().strftime("%B %d, %Y")
 
-    if no_new:
+    if no_new and scan_looks_broken:
+        body_content = """
+        <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:10px;
+          padding:20px 24px;text-align:center;color:#856404;">
+          <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+          <div style="font-size:16px;font-weight:600;">Scan returned zero candidates — likely a check failure</div>
+          <div style="font-size:13px;color:#555;margin-top:6px;">
+            Neither the tracker page nor SEC EDGAR returned any results this run.
+            This usually means the detection query broke, not that the market is quiet.
+            Check the run logs before trusting this as "no news."
+          </div>
+        </div>"""
+    elif no_new:
         body_content = """
         <div style="background:#f0f8f4;border:1px solid #c8e6d8;border-radius:10px;
           padding:20px 24px;text-align:center;color:#0F6E56;">
@@ -1057,10 +1185,17 @@ def main():
     # 1. Fetch current list of thrift conversions
     current_banks = fetch_thrift_list()
 
-    # 2. Identify new additions (not seen in previous runs)
+    # Distinguish "confirmed nothing new" from "the scan itself came back
+    # empty/broken" — these look identical downstream unless we flag it here.
+    scan_looks_broken = len(current_banks) == 0
+
+    # 2. Identify new additions (not seen in previous runs), using the
+    # normalized name key so punctuation/casing drift doesn't create
+    # false "new" entries or, worse, prevent real new entries from
+    # ever registering against a stale hash scheme.
     new_banks = []
     for bank in current_banks:
-        bank_id = hashlib.md5(bank["name"].encode()).hexdigest()
+        bank_id = bank_key(bank["name"])
         if bank_id not in known_banks:
             new_banks.append(bank)
             known_banks[bank_id] = {
@@ -1070,6 +1205,12 @@ def main():
             }
 
     log.info(f"New banks detected: {len(new_banks)}")
+    if scan_looks_broken:
+        log.error(
+            "ALERT: fetch_thrift_list() returned 0 candidates total this run. "
+            "This is almost certainly a detection failure (EDGAR query/network "
+            "issue), not evidence of an inactive market. Flagging in notification."
+        )
 
     # 3. For each new bank, fetch prospectus and run checklist
     analyses = []
@@ -1106,12 +1247,13 @@ def main():
 
     # 5. Build and send notification
     no_new = len(new_banks) == 0
-    subject = (
-        f"[Thrift Monitor] No new additions this week — {datetime.now().strftime('%b %d')}"
-        if no_new else
-        f"[Thrift Monitor] {len(new_banks)} new bank{'s' if len(new_banks) > 1 else ''} detected — {datetime.now().strftime('%b %d')}"
-    )
-    html = build_email_html(new_banks, analyses, no_new)
+    if no_new and scan_looks_broken:
+        subject = f"[Thrift Monitor] ⚠️ Scan returned 0 results — check may have failed — {datetime.now().strftime('%b %d')}"
+    elif no_new:
+        subject = f"[Thrift Monitor] No new additions this week — {datetime.now().strftime('%b %d')}"
+    else:
+        subject = f"[Thrift Monitor] {len(new_banks)} new bank{'s' if len(new_banks) > 1 else ''} detected — {datetime.now().strftime('%b %d')}"
+    html = build_email_html(new_banks, analyses, no_new, scan_looks_broken)
     send_email(subject, html, analyses if not no_new else None)
 
     # 6. Update and publish live watchlist dashboard
