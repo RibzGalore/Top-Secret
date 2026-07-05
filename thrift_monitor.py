@@ -316,24 +316,19 @@ def fetch_prospectus_text(bank: dict) -> str:
     if bank.get("prefetch"):
         log.info(f"Using prefetched financial data for {bank.get('name')}")
         return bank["prefetch"]
-    
+
     name = bank.get("name", "")
-    # ... rest of function continues unchanged
-    
-    # If a direct source URL to a filing is provided, fetch it directly
+
+    # 1. If a direct source URL to a filing is already provided, use it.
     source = bank.get("source", "")
     if source and "sec.gov/Archives" in source:
         try:
-            resp = requests.get(source, timeout=20, headers={"User-Agent": "thrift-monitor/1.0 contact@example.com"})
+            resp = requests.get(source, timeout=20, headers=EDGAR_HEADERS)
             if resp.ok:
-                # Strip HTML tags to get clean text
-                from bs4 import BeautifulSoup
                 soup = BeautifulSoup(resp.text, "html.parser")
-                # Remove script and style elements
                 for tag in soup(["script", "style", "head"]):
                     tag.decompose()
                 clean_text = soup.get_text(separator="\n")
-                # Collapse whitespace
                 import re
                 clean_text = re.sub(r'\n{3,}', '\n\n', clean_text)
                 clean_text = re.sub(r' {2,}', ' ', clean_text)
@@ -342,12 +337,20 @@ def fetch_prospectus_text(bank: dict) -> str:
         except Exception as e:
             log.warning(f"Direct fetch failed for {name}: {e}")
 
-    # Try SEC EDGAR full-text search by company name.
-    # NOTE: EDGAR's _source has no 'accession_no' or 'entity_id' fields —
-    # the accession number lives inside the hit's _id (format
-    # 'accession-with-dashes:filename.htm'), and CIK is resolved separately
-    # via the company search endpoint. The previous version read fields
-    # that don't exist, so this path always silently fell through.
+    # 2. PRIMARY PATH: resolve CIK by company name, then pull the company's
+    # actual filing history from data.sec.gov/submissions. This is the
+    # source of truth for "what has this company filed" — unlike full-text
+    # search, it isn't a search index with matching/lag issues, so a
+    # same-day or next-day filing (like a fresh 424B3) is found reliably.
+    # This directly fixes the case where full-text search returned zero
+    # hits for a real, verifiably-existing filing.
+    text = _fetch_via_submissions_api(name)
+    if text:
+        return text
+
+    # 3. FALLBACK: EDGAR full-text search, kept for cases where the name
+    # doesn't resolve cleanly via company search (e.g. a subtle name
+    # mismatch between the tracker site and EDGAR's registered entity name).
     try:
         search_url = (
             f"https://efts.sec.gov/LATEST/search-index?q=%22{requests.utils.quote(name)}%22"
@@ -360,18 +363,13 @@ def fetch_prospectus_text(bank: dict) -> str:
             if hits:
                 hit = hits[0]
                 accession, filename = _parse_id(hit.get("_id", ""))
-                # cik(s) for the filer — EDGAR full text search returns this
-                # as a list under _source['cik'] in most cases
                 ciks = hit.get("_source", {}).get("cik", [])
                 cik = ciks[0] if isinstance(ciks, list) and ciks else (ciks or "")
-
                 if not cik:
-                    # Fallback: resolve CIK by company name via EDGAR company search
                     cik = _lookup_cik_by_name(name)
-
                 if accession and cik:
                     acc_clean = accession.replace("-", "")
-                    cik_int = str(int(cik))  # strip leading zeros for the Archives path
+                    cik_int = str(int(cik))
                     filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{accession}-index.htm"
                     filing_resp = requests.get(filing_url, timeout=15, headers=EDGAR_HEADERS)
                     if filing_resp.ok:
@@ -382,17 +380,78 @@ def fetch_prospectus_text(bank: dict) -> str:
                                 doc_url = f"https://www.sec.gov{href}" if href.startswith("/") else href
                                 doc_resp = requests.get(doc_url, timeout=20, headers=EDGAR_HEADERS)
                                 if doc_resp.ok and len(doc_resp.text) > 5000:
-                                    log.info(f"Fetched SEC filing for {name}: {len(doc_resp.text)} chars")
+                                    log.info(f"Fetched SEC filing for {name} via full-text-search fallback: {len(doc_resp.text)} chars")
                                     return doc_resp.text[:15000]
                     else:
                         log.warning(f"Filing index fetch failed for {name}: HTTP {filing_resp.status_code}")
                 else:
                     log.warning(f"Could not resolve accession/CIK for {name} (accession={accession!r}, cik={cik!r})")
     except Exception as e:
-        log.warning(f"SEC EDGAR search failed for {name}: {e}")
+        log.warning(f"SEC EDGAR full-text-search fallback failed for {name}: {e}")
 
     log.warning(f"Could not fetch prospectus for {name} — returning placeholder")
     return f"[Prospectus text unavailable for {name}. Analysis based on bank name and public information only.]"
+
+
+# Prefer the actual final prospectus over the initial S-1 draft, since it
+# has the priced offering terms and final financials.
+_PREFERRED_FORM_ORDER = ["424B4", "424B3", "S-1/A", "S-1"]
+
+
+def _fetch_via_submissions_api(name: str) -> str:
+    """
+    Resolve CIK by company name, then use data.sec.gov's submissions API
+    (SEC's stable, documented, non-search-index company filing history)
+    to find the most relevant conversion-related filing and fetch it
+    directly. Returns '' if this path doesn't pan out, so the caller can
+    fall back to full-text search.
+    """
+    cik = _lookup_cik_by_name(name)
+    if not cik:
+        log.warning(f"Could not resolve CIK for '{name}' via company name search")
+        return ""
+
+    cik10 = cik.zfill(10)
+    try:
+        resp = requests.get(
+            f"https://data.sec.gov/submissions/CIK{cik10}.json",
+            timeout=15, headers=EDGAR_HEADERS
+        )
+        if not resp.ok:
+            log.warning(f"Submissions API returned HTTP {resp.status_code} for CIK {cik10} ({name})")
+            return ""
+        recent = resp.json().get("filings", {}).get("recent", {})
+        forms = recent.get("form", [])
+        accessions = recent.get("accessionNumber", [])
+        docs = recent.get("primaryDocument", [])
+        dates = recent.get("filingDate", [])
+
+        # Pick the best available filing by form-type preference, most
+        # recent first within each preference tier.
+        candidates = list(zip(forms, accessions, docs, dates))
+        for preferred_form in _PREFERRED_FORM_ORDER:
+            matches = [c for c in candidates if c[0] == preferred_form]
+            if matches:
+                matches.sort(key=lambda c: c[3], reverse=True)
+                form, accession, doc, filed = matches[0]
+                cik_int = str(int(cik))
+                acc_clean = accession.replace("-", "")
+                doc_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{doc}"
+                doc_resp = requests.get(doc_url, timeout=20, headers=EDGAR_HEADERS)
+                if doc_resp.ok and len(doc_resp.text) > 5000:
+                    soup = BeautifulSoup(doc_resp.text, "html.parser")
+                    for tag in soup(["script", "style", "head"]):
+                        tag.decompose()
+                    clean_text = soup.get_text(separator="\n")
+                    log.info(f"Fetched {form} for {name} via submissions API "
+                             f"(filed {filed}): {len(clean_text)} chars")
+                    return clean_text[:50000]
+                else:
+                    log.warning(f"Doc fetch failed for {name} {form} at {doc_url}: HTTP {doc_resp.status_code}")
+        log.warning(f"No S-1/424B filing found in submissions history for {name} (CIK {cik10})")
+    except Exception as e:
+        log.warning(f"Submissions API path failed for {name}: {e}")
+    return ""
 
 
 def _lookup_cik_by_name(name: str) -> str:
