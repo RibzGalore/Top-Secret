@@ -51,8 +51,8 @@
         <div class="rec-badge">INSUFFICIENT DATA</div>
       </div>
     </div>
-    <div class="verdict"><strong>Verdict:</strong> The filing content provided contains only an SEC EDGAR directory listing with no substantive financial data, prospectus text, or disclosures. No meaningful analysis can be performed. A full S-1 or SB-2 prospectus is required to evaluate this thrift conversion.</div>
-    <div class="analyst">What was retrieved from EDGAR is nothing more than a file index page pointing to a 523KB document filed on February 27, 1998 — the actual prospectus content was not included in this submission. Without balance sheet data, income statement figures, capital ratios, loan composition, deposit structure, or management discussion, it is impossible to apply any of the 10 checklist criteria. The filing appears to be a late-1990s thrift conversion given the era and filing type, but that alone tells us nothing actionable. Investors and researchers should pull the full 0000950152-98-001583.txt document directly from EDGAR and resubmit the relevant financial sections for a complete scorecard. Until that data is available, this analysis must be classified as entirely insufficient.</div>
+    <div class="verdict"><strong>Verdict:</strong> The filing content provided contains only an SEC EDGAR directory listing with no actual prospectus or financial data. No meaningful analysis can be performed on Columbia Financial's thrift conversion without access to the underlying filing text. A full review requires the actual S-1 or SB-2 prospectus document.</div>
+    <div class="analyst">The EDGAR directory listing points to a 1998-era thrift conversion filing (CIK 1051000) but the actual document content was not retrieved or provided. Without balance sheet data, income statement figures, capital ratios, loan composition, deposit structure, or management discussion sections, it is impossible to apply any of the 10 checklist criteria. The filing appears to be from late February 1998, which places it in the wave of mutual-to-stock conversions that accelerated after the mid-1990s. To complete this analysis, the raw text of file '0000950152-98-001583.txt' (523,117 bytes) must be retrieved and parsed. Until that content is available, this scorecard must be classified as INSUFFICIENT_DATA across all dimensions.</div>
     <table>
       <thead><tr>
         <th style="width:32px;"></th>
@@ -74,7 +74,7 @@
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No balance sheet data was included in the provided filing content. Total assets cannot be determined.
+                No balance sheet data was provided in the filing content. Total assets cannot be determined from a directory listing alone.
             </td>
         </tr>
         <tr>
@@ -90,7 +90,7 @@
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No income statement or operating expense data was provided. Efficiency ratio cannot be calculated.
+                No income statement or expense data available. Efficiency ratio cannot be calculated without non-interest expense and net revenue figures.
             </td>
         </tr>
         <tr>
@@ -100,13 +100,13 @@
                 font-size:12px;font-weight:700;">?</span>
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
-                3. Loan-to-Deposit Ratio (80-90% Sweet Spot)
+                3. Loan-to-Deposit Ratio (Sweet Spot 80-90%)
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                Loan and deposit totals are unavailable. Ratio cannot be assessed.
+                No loan or deposit totals are present in the provided content. This ratio cannot be assessed.
             </td>
         </tr>
         <tr>
@@ -122,7 +122,7 @@
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No interest income or interest expense data was provided. NIM cannot be calculated.
+                No interest income or earning asset data provided. NIM calculation is not possible.
             </td>
         </tr>
         <tr>
@@ -132,13 +132,13 @@
                 font-size:12px;font-weight:700;">?</span>
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
-                5. CRE Concentration (Under 300% of Capital)
+                5. Loan Composition / CRE Concentration (<300% of Capital)
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                Loan composition and capital figures are unavailable. CRE concentration cannot be measured.
+                Loan portfolio breakdown and capital figures are unavailable. CRE concentration ratio cannot be evaluated.
             </td>
         </tr>
         <tr>
@@ -154,7 +154,7 @@
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No asset quality data was included in the filing content provided.
+                No asset quality data is present in the provided filing content. NPL ratio cannot be determined.
             </td>
         </tr>
         <tr>
@@ -164,13 +164,13 @@
                 font-size:12px;font-weight:700;">?</span>
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
-                7. Tangible Book Value (Pay No More Than 1.5x Unless ROE >15%)
+                7. Tangible Book Value (Pay No More Than 1.5x TBV unless ROE >15%)
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                Offer price and tangible book value per share are both unknown. Price-to-TBV cannot be assessed.
+                Neither the offer price nor tangible book value per share is available from this directory listing. Price-to-TBV cannot be assessed.
             </td>
         </tr>
         <tr>
@@ -186,7 +186,7 @@
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No deposit composition data was provided in the filing content.
+                No deposit composition data is available. Cannot evaluate the mix of checking, savings, money market, and CD funding.
             </td>
         </tr>
         <tr>
@@ -196,13 +196,13 @@
                 font-size:12px;font-weight:700;">?</span>
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
-                9. Management Quality
+                9. Management Quality (Accountability vs. Excuses)
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No management discussion, MD&A, or letters to shareholders were included. Management quality cannot be evaluated.
+                No management discussion, MD&A, or risk factor text is available to assess the tone and quality of leadership communication.
             </td>
         </tr>
         <tr>
@@ -212,24 +212,24 @@
                 font-size:12px;font-weight:700;">?</span>
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
-                10. Capital Ratios (CET1/Tier1 Target >10%)
+                10. Capital Ratios (CET1/Tier1 >10% Solid, <8% Constrained)
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
                 N/A
             </td>
             <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
-                No regulatory capital data was included in the provided content. Capital adequacy cannot be assessed.
+                No regulatory capital data is present. As a thrift conversion, pro forma capital ratios post-offering would be a key metric but are unavailable here.
             </td>
         </tr></tbody>
     </table>
     <div class="flags">
       <div class="flag-box">
         <div class="flag-title" style="color:#1D9E75;">Green flags</div>
-        <div style='margin-bottom:6px;font-size:13px;'>✓ Filing appears to exist on EDGAR and can potentially be retrieved for full analysis</div>
+        <div style='margin-bottom:6px;font-size:13px;'>✓ Filing does exist on EDGAR (CIK 1051000), confirming the bank did complete an SEC registration process.</div><div style='margin-bottom:6px;font-size:13px;'>✓ File size of 523,117 bytes suggests a substantive prospectus document likely containing full financial disclosures — pending retrieval.</div>
       </div>
       <div class="flag-box">
         <div class="flag-title" style="color:#E24B4A;">Red flags</div>
-        <div style='margin-bottom:6px;font-size:13px;'>✗ Filing content is entirely non-substantive — only an EDGAR directory index was provided</div><div style='margin-bottom:6px;font-size:13px;'>✗ No financial data of any kind is available for analysis</div><div style='margin-bottom:6px;font-size:13px;'>✗ Cannot verify basic thrift conversion parameters without the actual prospectus document</div>
+        <div style='margin-bottom:6px;font-size:13px;'>✗ Filing content returned only an EDGAR directory listing — no actual prospectus text was extracted or provided.</div><div style='margin-bottom:6px;font-size:13px;'>✗ Cannot verify any financial metrics, asset quality, or capital adequacy without the underlying document.</div><div style='margin-bottom:6px;font-size:13px;'>✗ 1998 vintage filing raises additional caution around data availability and relevance to current conditions if being considered as a historical case study.</div>
       </div>
     </div>
   </div>
