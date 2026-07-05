@@ -1,0 +1,41 @@
+name: Telegram Command Listener
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  listen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Restore offset
+        uses: actions/cache@v4
+        with:
+          path: telegram_offset.json
+          key: telegram-offset-${{ github.run_id }}
+          restore-keys: telegram-offset-
+
+      - name: Check for commands
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python telegram_listener.py
+
+      - name: Save offset
+        uses: actions/cache@v4
+        with:
+          path: telegram_offset.json
+          key: telegram-offset-${{ github.run_id }}
