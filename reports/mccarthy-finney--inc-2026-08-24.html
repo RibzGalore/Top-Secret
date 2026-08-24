@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>McCarthy Finney, Inc. — Thrift Monitor</title>
+<style>
+  body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#f5f5f0;margin:0;padding:20px;}
+  .card {background:#fff;border-radius:12px;border:1px solid #e8e8e8;
+    padding:24px;margin-bottom:20px;max-width:780px;margin-left:auto;margin-right:auto;}
+  .header {display:flex;justify-content:space-between;align-items:flex-start;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px;}
+  .bank-name {font-size:22px;font-weight:700;color:#1a1a1a;}
+  .bank-meta {font-size:13px;color:#666;margin-top:4px;}
+  .score {text-align:right;}
+  .score-num {font-size:36px;font-weight:700;color:#1a1a1a;}
+  .rec-badge {display:inline-block;padding:4px 14px;border-radius:6px;
+    font-size:12px;font-weight:700;background:#88878022;color:#888780;margin-top:6px;}
+  .verdict {background:#f8f8f8;border-left:4px solid #888780;border-radius:0 8px 8px 0;
+    padding:14px 18px;margin-bottom:16px;font-size:14px;color:#333;line-height:1.7;}
+  .analyst {background:#f0f8f4;border-radius:8px;padding:14px 18px;
+    margin-bottom:16px;font-size:13px;color:#333;line-height:1.7;}
+  table {width:100%;border-collapse:collapse;}
+  th {background:#f5f5f5;padding:8px 10px;text-align:left;font-size:12px;
+    color:#666;font-weight:600;}
+  .flags {display:flex;gap:20px;margin-top:16px;flex-wrap:wrap;}
+  .flag-box {flex:1;min-width:200px;}
+  .flag-title {font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:0.05em;margin-bottom:8px;}
+  .footer {text-align:center;font-size:11px;color:#999;margin-top:20px;
+    max-width:780px;margin-left:auto;margin-right:auto;}
+</style>
+</head>
+<body>
+<div style="max-width:780px;margin:0 auto;">
+  <div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;
+    letter-spacing:0.05em;margin-bottom:16px;">Community Bank Investing Agent</div>
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="bank-name">McCarthy Finney, Inc.</div>
+        <div class="bank-meta">
+          MCFN &nbsp;·&nbsp;
+          IPO TBD &nbsp;·&nbsp;
+          Offer $—
+          
+        </div>
+      </div>
+      <div class="score">
+        <div class="score-num">0<span style="font-size:16px;color:#888;">/10</span></div>
+        <div class="rec-badge">INSUFFICIENT DATA</div>
+      </div>
+    </div>
+    <div class="verdict"><strong>Verdict:</strong> No prospectus or filing content was available for analysis. All 10 checklist items return INSUFFICIENT_DATA, making any investment scoring impossible. Investors should obtain the full S-1 or prospectus before drawing conclusions.</div>
+    <div class="analyst">Without access to actual financial statements, management discussion sections, or prospectus disclosures, no meaningful due diligence can be performed on McCarthy Finney, Inc. Key metrics such as NIM, efficiency ratio, loan-to-deposit ratio, capital ratios, and TBV per share are all unknown. The CIK (0002131882) suggests a relatively recent or pending filing, but the content was not retrievable for this analysis. Investors should pull the full S-1 directly from SEC EDGAR and review audited financials, the use-of-proceeds section, and management biography disclosures before making any decisions. This is especially critical for thrift conversions, where pro forma capital ratios and the pricing relative to tangible book value are the two most important entry-point factors. No recommendation can be responsibly issued at this time.</div>
+    <table>
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th>Criterion</th>
+        <th>Metric</th>
+        <th>Notes</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                1. Assets Under $50B
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Total assets could not be determined from the unavailable filing content.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                2. Efficiency Ratio
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                No income statement or operational data was available to calculate the efficiency ratio.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                3. Loan-to-Deposit Ratio
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Balance sheet data was not available; loan and deposit totals are unknown.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                4. Net Interest Margin (NIM)
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Interest income and interest expense data were not available to compute NIM.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                5. Loan Composition / CRE Concentration
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Loan schedule and capital figures were not available to assess CRE concentration relative to capital.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                6. Non-Performing Loans
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Asset quality tables and NPL figures were not available for review.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                7. Tangible Book Value
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Pro forma TBV per share and offer price relationship cannot be assessed without the prospectus financials.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                8. Deposit Structure
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                Deposit composition breakdown (checking, savings, CDs, brokered) was not available.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                9. Management Quality
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                No MD&A, management biographies, or shareholder letters were available to assess management tone and track record.
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                <span style="display:inline-block;width:24px;height:24px;border-radius:50%;
+                background:#88878022;color:#888780;text-align:center;line-height:24px;
+                font-size:12px;font-weight:700;">?</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:600;color:#1a1a1a;font-size:14px;">
+                10. Capital Ratios
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;font-style:italic;">
+                N/A
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #eee;color:#555;font-size:13px;">
+                CET1, Tier 1, and total capital ratios were not available from the missing filing content.
+            </td>
+        </tr></tbody>
+    </table>
+    <div class="flags">
+      <div class="flag-box">
+        <div class="flag-title" style="color:#1D9E75;">Green flags</div>
+        <div style="font-size:13px;color:#999;">None identified</div>
+      </div>
+      <div class="flag-box">
+        <div class="flag-title" style="color:#E24B4A;">Red flags</div>
+        <div style='margin-bottom:6px;font-size:13px;'>✗ Prospectus/S-1 content entirely unavailable — cannot perform any fundamental analysis</div><div style='margin-bottom:6px;font-size:13px;'>✗ No financial metrics retrievable from SEC EDGAR filing for CIK 0002131882</div><div style='margin-bottom:6px;font-size:13px;'>✗ Unknown management team, asset size, and capital structure present unacceptable information risk</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    Source: thezenofthriftconversions.com + SEC EDGAR · Analysis by Claude (Anthropic)<br>
+    Not investment advice. Always verify figures against original filings.
+  </div>
+</div>
+</body></html>
